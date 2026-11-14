@@ -18,12 +18,16 @@
 
 - 2026-11-15 · Task 8 · `1449f4090fbd8987f37eeec1887f9a5fdf0f4618` · 加入命令行、托盘、更新器并实测本地服务启停，全量测试 132 项通过，2 项缺上游样本跳过。
 
+- 2026-11-15 · Task 9 · `9980c67e48bff610403a1a09c72eea640ccece5c` · 构建并实测单文件 Windows EXE，全量测试 135 项通过，2 项缺上游样本跳过。
+
 ## 偏离
 
 - 2026-11-15 · Task 1 Step 2：`py -3.11` 返回 `No installed Python found!`，改用本机已安装的 Python 3.11.9 创建项目 `.venv`，其余 Python 命令均在该环境内执行。
 - 2026-11-15 · Task 5 · 无效 tick 检测到切图时直接用本次读到的图建新比赛。按设计 §7.4，无效 tick 只取地图信息和切图判定所需图片，下一次有效 tick 再采集载具与位置。
 - 2026-11-15 · Task 8 · Windows 沙箱限制环回 HTTP，真实启停测试在获得环回网络权限的同一项目环境执行。
 - 2026-11-15 · Task 9 · 将随仓库分发的 37 张地图一并装入单文件 EXE，首次运行时补齐 EXE 旁的缺失地图，保留已有文件。
+- 2026-11-15 · Task 10 · 设计 §2 提到新增语言只需一份 JSON，§7.2 明确将 `LANGUAGES` 固定为 `("en", "zh")`。本期按 §7.2 实现，双语开发文档写明了扩展语言还需注册代码、增加选项标签并重新打包。
+- 2026-11-15 · Task 10 · 收尾要求工作区干净，执行规则要求在 Task 提交后写入该提交的哈希。最后一条完成记录单独提交，保留可核对的 Task 提交哈希。
 
 ## 阻塞
 
@@ -38,3 +42,13 @@
 
 - 2026-11-15 · Task 2 Step 2 · 脚本生成 227 条地图哈希。
 - 2026-11-15 · Task 9 Step 4 · PyInstaller 构建成功。跳过更新启动 EXE 的 `serve --port 5057`，30 秒内获得状态、首页及 CSS 的 HTTP 200；解出 37 张地图，`POST /shutdown` 返回 200，进程 10 秒内以 0 退出。
+
+## 收尾验收
+
+- 全量测试 `.venv\Scripts\python -m pytest -q` · 140 项通过，2 项因上游样本缺失按计划跳过。
+- `.venv\Scripts\python -m wt_plotter --help` 以 0 退出，列出 `watch`、`serve` 和 `capture`。Git 检查确认 `reference/` 无跟踪文件，提交前的工作区改动仅包含 Task 10 文件与计划、进度记录。
+- 设计 §2 功能等价 · `tests/capture/` 验证采集、换算及状态机，`tests/web/` 检查比赛列表、实时页面与回放数据接口，`tests/test_cli.py` 验证 HTTP 关停与单实例探测，`tests/desktop/` 验证托盘语言及更新器决策，Task 9 验证单文件 EXE。
+- 设计 §2 中英切换 · `tests/i18n/` 验证语言文件与设置，`tests/web/test_templates.py` 验证页面以两种语言渲染。
+- 设计 §2 离线采集 · `tests/capture/test_tracker.py` 和 `test_capturer.py` 使用手写遥测、临时 SQLite 和注入的取图函数。
+- 设计 §2 旧数据库兼容 · `wt_plotter/storage/db.py` 的建表 SQL 与上游一致，`tests/storage/test_db.py` 验证表结构及持久化操作。真实旧库读入等待样本。
+- 偏离集中在本机 Python 启动方式、无效 tick 的取图与起局顺序、环回权限、EXE 内地图、语言扩展及最终进度提交。没有阻塞项。待人工复核包括 Falklands 图片哈希、真实旧库、真实比赛回放和真实发布替换流程。
