@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+reference/
+logs/
+build/
+dist/
+*.spec
+data/matches*
+data/missing*
+data/settings.json
+data/*.log
+.pytest_cache/
