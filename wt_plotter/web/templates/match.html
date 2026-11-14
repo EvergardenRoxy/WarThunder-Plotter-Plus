@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% set heading = t('match.live_title') if is_live else t('match.title', id=match.id) %}
+{% block title %}{{ heading }} · {% endblock %}
+{% block content %}
+<div class="match-header">
+    <div>
+        <h2>{{ heading }}{% if is_live %} <span id="live-badge" class="badge live">{{ t('match.live') }}</span>{% endif %}</h2>
+        <div class="match-meta">
+            <div>{{ t('match.started_at', time=match.started_at | dt) }}</div>
+            {% if match.ended_at %}
+            <div>{{ t('match.ended_at', time=match.ended_at | dt) }}</div>
+            {% endif %}
+            <div>{{ t('match.map', name=(icons[match.battle_type] ~ ' ' ~ match.map_name) | trim) }}</div>
+            {% if match.air_map %}
+            <div>{{ t('match.air_map', name=(icons[match.air_map.battle_type] ~ ' ' ~ match.air_map.map_name) | trim) }}</div>
+            {% endif %}
+            {% if match.initial_capture_count is not none %}
+            <div>{{ t('match.initial_capture_zones', count=match.initial_capture_count) }}</div>
+            {% endif %}
+            {% if match.initial_capture_x is not none and match.initial_capture_y is not none %}
+            <div>{{ t('match.capture_barycenter', x='%.4f' | format(match.initial_capture_x), y='%.4f' | format(match.initial_capture_y)) }}</div>
+            {% endif %}
+        </div>
+    </div>
+    <a href="{{ url_for('index') }}" class="btn btn-secondary">← {{ t('match.back') }}</a>
+</div>
+{% if is_live %}
+<p class="capture-stopped" id="capture-stopped" role="status" hidden>{{ t('viewer.capture_stopped') }}</p>
+{% endif %}
+<div class="viewer-container">
+    <div class="canvas-wrapper">
+        <canvas id="mapCanvas" data-match-id="{{ match.id }}" data-live="{{ 'true' if is_live else 'false' }}"></canvas>
+    </div>
+    <div class="sidebar">
+        <div class="panel">
+            <h3>{{ t('viewer.statistics') }}</h3>
+            <div id="stats">{{ t('viewer.loading') }}</div>
+        </div>
+        <div class="panel">
+            <h3>{{ t('viewer.zoom') }}</h3>
+            <div class="zoom-controls">
+                <button class="btn btn-secondary" id="zoom-out" aria-label="{{ t('viewer.zoom_out') }}">−</button>
+                <span id="zoom-level">100%</span>
+                <button class="btn btn-secondary" id="zoom-in" aria-label="{{ t('viewer.zoom_in') }}">+</button>
+                <button class="btn btn-secondary" id="zoom-reset">{{ t('viewer.reset') }}</button>
+            </div>
+            <p class="hint">{{ t('viewer.zoom_hint') }}</p>
+        </div>
+        {% if not is_live %}
+        <div class="panel">
+            <h3>{{ t('viewer.timeline') }}</h3>
+            <div class="timeline-controls">
+                <input type="range" id="timeline-slider" min="0" max="100" value="100" class="timeline-slider" aria-label="{{ t('viewer.timeline') }}">
+                <div class="timeline-display">
+                    <span id="timeline-current">--:--</span> / <span id="timeline-max">--:--</span>
+                </div>
+            </div>
+            <p class="hint">{{ t('viewer.timeline_hint') }}</p>
+        </div>
+        {% endif %}
+        <div class="panel">
+            <h3>{{ t('filter.title') }}</h3>
+            <div class="filter-list">
+                {% set filters = [
+                    ('player', '#faC81E', t('filter.player')), ('squad', '#67D756', t('filter.squad')),
+                    ('ally', '#174DFF', t('filter.ally')), ('enemy', '#fa0C00', t('filter.enemy')),
+                    ('capture_zone', '#ffffff', t('filter.capture')), ('respawn', '#888888', t('filter.respawn')),
+                    ('other', '#888888', t('filter.other')),
+                ] %}
+                {% for value, color, label in filters %}
+                <div class="filter-item">
+                    <input type="checkbox" id="filter-{{ value }}" data-filter="{{ value }}" checked>
+                    <label for="filter-{{ value }}"><span class="color-dot" style="background: {{ color }}"></span>{{ label }}</label>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="blip-size-control">
+                <label for="blip-size">{{ t('filter.blip_size') }}</label>
+                <input type="range" id="blip-size" min="0.5" max="3" step="0.25" value="1.5" class="blip-size-slider">
+                <span id="blip-size-value">1.5</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='viewer.js') }}"></script>{% endblock %}
