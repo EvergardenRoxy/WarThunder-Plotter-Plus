@@ -1,4 +1,7 @@
 import logging
+from pathlib import Path
+import shutil
+import sys
 import threading
 import time
 import webbrowser
@@ -110,4 +113,11 @@ def main() -> None:
     )
     threading.excepthook = _log_thread_failure
     updater.check_and_update_on_start()
+    if getattr(sys, "frozen", False):
+        # 首次运行时从包内补齐地图。
+        PATHS.maps_dir.mkdir(parents=True, exist_ok=True)
+        for image in (Path(sys._MEIPASS) / "data" / "maps").glob("*.png"):
+            target = PATHS.maps_dir / image.name
+            if not target.exists():
+                shutil.copyfile(image, target)
     cli()
