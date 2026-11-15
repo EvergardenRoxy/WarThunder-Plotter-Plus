@@ -32,6 +32,20 @@
 
 - 2026-11-15 · 2026-11-15-viewer-readability.md · Task 5 · `f3eb15ea16e0fb1d4bbd4762fd4b80d92c88e0e4` · 版本升至 0.3.2，双语变更日志已更新，便携 EXE 已构建并通过启动与关停检查；全量测试 161 项通过，2 项因缺上游样本跳过。
 
+- 2026-11-15 · 2026-11-15-viewer-playback-feed.md · Task 1 · `f87e36f` · 一屏布局、行动轨迹显示时间与 8 段淡化、标记大小 0.25～1.5、线条粗细、设置记忆。
+
+- 2026-11-15 · 2026-11-15-viewer-playback-feed.md · Task 2 · `5d95c8a` · 倍速滑块 5×～40×，默认 10×。
+
+- 2026-11-15 · 2026-11-15-viewer-playback-feed.md · Task 3 · `ce8fbcf` · 空战图切换，按第一次出击默认底图；match/7 显示空战图与轨迹。
+
+- 2026-11-15 · 2026-11-15-viewer-playback-feed.md · Task 4 · `c6fbfd4` · 兵种形状、图例与悬停名称，隐藏火炮/碉堡/舰船。
+
+- 2026-11-15 · 2026-11-15-viewer-playback-feed.md · Task 5 · `fbb830c` · 采集 /hudmsg 播报入 events 表，每场首批只推进游标。
+
+- 2026-11-15 · 2026-11-15-viewer-playback-feed.md · Task 6 · `d63bee8` · 播报接口与侧栏列表，随时间轴更新。
+
+- 2026-11-15 · 2026-11-15-viewer-playback-feed.md · Task 7 · `1e29502` · 版本 0.4.0、双语变更日志与文档；全量测试 177 通过、2 跳过。
+
 ## 偏离
 
 - 2026-11-15 · Task 1 Step 2：`py -3.11` 返回 `No installed Python found!`，改用本机已安装的 Python 3.11.9 创建项目 `.venv`，其余 Python 命令均在该环境内执行。
@@ -49,9 +63,16 @@
 
 - 2026-11-15 · 2026-11-15-viewer-readability.md · Task 5 Step 4 · PyInstaller 成功生成 EXE，构建脚本的最后一步因旧便携版文件被其他进程占用而失败。将已生成的 EXE 保存为 dist/WarThunderPlotterPlus-0.3.2-portable.exe，核对 SHA-256 一致。
 
+- 2026-11-15 · 2026-11-15-viewer-playback-feed.md · Task 1 · 实时页不显示播放条（设计 §5 写的是只显示状态和时长）；直播状态已在顶栏徽标中，没有可操作的内容。
+- 2026-11-15 · 2026-11-15-viewer-playback-feed.md · Task 3 · 仓库没有 `avg_normandy_map.png`，路由测试改用 `avg_egypt_sinai_map`。空战图上统计标签改为"空中视角"，不再写"已换算为地面坐标"。
+- 2026-11-15 · 2026-11-15-viewer-playback-feed.md · Task 4 · 新增测试，检查每个兵种形状都有 `unit.*` 译名（悬停提示按运行时拼出的键取名）。
+- 2026-11-15 · 2026-11-15-viewer-playback-feed.md · Task 5 · 新增测试并修复：本场第一次返回空列表时也算完成跳过，避免把本场第一批真实消息丢掉。
+
 ## 阻塞
 
 ## 待人工复核
+
+- 2026-11-15 · 2026-11-15-viewer-playback-feed.md · /hudmsg 格式按社区资料实现，未用真实游戏数据核对；用户之后进游戏测试。不一致时改 `TelemetryClient.fetch_damage` 和 `tests/capture/test_client.py` 的样本。
 
 - 2026-11-15 · Task 2 Step 6 · `air_falklands_map.png` 的上游与新算法均得到 `000004000000111118c2534864c987426e597863ee870296020410000`，无法匹配表中记录。按计划列入地图识别测试的显式排除清单。
 - 2026-11-15 · Task 4 · 上游目录未提供 `data/matches.db`，按计划跳过真实旧库读入测试。建表 SQL 已与上游逐字核对。
