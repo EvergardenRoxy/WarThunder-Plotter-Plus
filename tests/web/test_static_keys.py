@@ -30,3 +30,9 @@ def test_templates_have_no_literal_text():
         source = (WEB / "templates" / page).read_text(encoding="utf-8")
         text = re.sub(r"<script\b[^>]*>.*?</script>|{%.*?%}|{{.*?}}|{#.*?#}|<[^>]+>", "", source, flags=re.DOTALL)
         assert re.search(r"\b[a-zA-Z]{3,}\b", text) is None, page
+
+
+def test_no_spread_over_position_arrays():
+    # 整场位置可达几十万条，展开成函数参数会超出引擎上限。
+    for path in (WEB / "static").glob("*.js"):
+        assert re.search(r"Math\.(max|min)\(\s*\.\.\.", path.read_text(encoding="utf-8")) is None, path.name

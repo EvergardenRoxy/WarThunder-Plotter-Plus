@@ -213,14 +213,16 @@ class MatchViewer {
                     }
                     return merged;
                 }).filter(Boolean);
+                // 逐条累计最大时间戳；整场位置太多，不能展开成函数参数。
+                let maxTs = -Infinity;
                 for (const pos of processed) {
                     if (pos.is_poi) {
                         this.pois.push(pos);
                     } else {
                         this.positions.push(pos);
                     }
+                    if (pos.timestamp > maxTs) maxTs = pos.timestamp;
                 }
-                const maxTs = Math.max(...processed.map(p => p.timestamp));
                 if (maxTs >= this.lastTimestamp) {
                     this.lastTimestamp = maxTs + 1;
                 }
