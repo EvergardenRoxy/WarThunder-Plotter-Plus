@@ -37,9 +37,9 @@
   "viewer.zoom_hint": "Scroll to zoom, drag to pan, double-click to reset",
   "viewer.timeline": "Timeline",
   "viewer.timeline_hint": "Drag to replay match progression",
-  "viewer.trail": "Trail length",
+  "viewer.trail": "Trail duration",
   "viewer.trail_all": "All",
-  "viewer.trail_seconds": "Last {n}s",
+  "viewer.trail_seconds": "{n}s",
   "viewer.play": "Play",
   "viewer.pause": "Pause",
   "viewer.stats": "{positions} positions, {pois} POIs",
@@ -296,5 +296,9 @@
   "map.wake_island": "Wake Island",
   "map.water": "Water",
   "map.zhengzhou": "Zhengzhou",
-  "map.no_map": "No Map"
+  "map.no_map": "No Map",
+  "viewer.details": "Match details",
+  "viewer.feed": "Battle feed",
+  "viewer.feed_empty": "No messages yet",
+  "filter.line_scale": "Line width"
 }

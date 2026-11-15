@@ -6,9 +6,10 @@
     <title>{% block title %}{% endblock %}{{ t('nav.app_name') }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
-<body>
+<body class="{{ body_class | default('') }}">
     <header class="header">
         <h1>{{ t('nav.app_name') }}</h1>
+        <div class="header-center">{% block header_center %}{% endblock %}</div>
         <nav>
             <a href="{{ url_for('index') }}">{{ t('nav.matches') }}</a>
             <a href="{{ url_for('live_view') }}">{{ t('nav.live') }}</a>

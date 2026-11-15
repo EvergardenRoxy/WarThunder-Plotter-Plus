@@ -86,18 +86,27 @@ if (mapCanvas) {
     document.getElementById('zoom-in').addEventListener('click', () => viewer.zoomIn());
     document.getElementById('zoom-out').addEventListener('click', () => viewer.zoomOut());
     document.getElementById('zoom-reset').addEventListener('click', () => viewer.resetView());
+    // 控件按已保存的设置回填。
     for (const checkbox of document.querySelectorAll('[data-filter]')) {
+        checkbox.checked = viewer.filters[checkbox.dataset.filter];
         checkbox.addEventListener('change', () => viewer.setFilter(checkbox.dataset.filter, checkbox.checked));
     }
-    const blipSize = document.getElementById('blip-size');
-    blipSize.addEventListener('input', () => {
-        viewer.setBlipSize(Number(blipSize.value));
-        document.getElementById('blip-size-value').textContent = blipSize.value;
-    });
+    const bindSlider = (id, value, setter) => {
+        const slider = document.getElementById(id);
+        const label = document.getElementById(`${id}-value`);
+        slider.value = value;
+        label.textContent = slider.value;
+        slider.addEventListener('input', () => {
+            setter(Number(slider.value));
+            label.textContent = slider.value;
+        });
+    };
+    bindSlider('blip-size', viewer.blipSize, value => viewer.setBlipSize(value));
+    bindSlider('line-scale', viewer.lineScale, value => viewer.setLineScale(value));
     const trail = document.getElementById('trail-length');
     for (const seconds of VIEW_STYLE.trailOptions) {
         const label = seconds ? t('viewer.trail_seconds', { n: seconds }) : t('viewer.trail_all');
-        trail.add(new Option(label, String(seconds)));
+        trail.add(new Option(label, String(seconds), false, seconds === viewer.trail));
     }
     trail.addEventListener('change', () => viewer.setTrail(Number(trail.value)));
 

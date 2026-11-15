@@ -37,9 +37,9 @@
   "viewer.zoom_hint": "滚动缩放，拖动平移，双击重置",
   "viewer.timeline": "时间轴",
   "viewer.timeline_hint": "拖动时间轴回放比赛",
-  "viewer.trail": "轨迹长度",
+  "viewer.trail": "行动轨迹显示时间",
   "viewer.trail_all": "全部",
-  "viewer.trail_seconds": "最近 {n} 秒",
+  "viewer.trail_seconds": "{n} 秒",
   "viewer.play": "播放",
   "viewer.pause": "暂停",
   "viewer.stats": "{positions} 条位置记录，{pois} 个标记点",
@@ -296,5 +296,9 @@
   "map.wake_island": "Wake Island",
   "map.water": "Water",
   "map.zhengzhou": "Zhengzhou",
-  "map.no_map": "No Map"
+  "map.no_map": "No Map",
+  "viewer.details": "比赛详情",
+  "viewer.feed": "战斗播报",
+  "viewer.feed_empty": "暂无播报",
+  "filter.line_scale": "线条粗细"
 }

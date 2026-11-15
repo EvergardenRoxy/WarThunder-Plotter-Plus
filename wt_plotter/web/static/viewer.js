@@ -16,9 +16,16 @@ const VIEW_STYLE = Object.freeze({
     deathSize: 2.5,
     capture: { radius: 12, alpha: 0.3, border: 2 },
     respawn: { size: 8, alpha: 0.5, border: 1.5 },
-    trailOptions: [0, 60, 30, 10],
+    trailOptions: [10, 30, 60, 120, 0],
+    fadeBands: 8,
+    blipRange: [0.25, 1.5],
+    lineScaleRange: [0.5, 2],
+    defaults: { trail: 30, blipSize: 0.5, lineScale: 1, speed: 10 },
+    settingsKey: 'wtp.viewer',
     playbackSpeed: 10,
 });
+
+const clamp = (value, [min, max]) => Math.max(min, Math.min(max, value));
 
 class MatchViewer {
     constructor(canvasId, matchId, { isLive = false, isAirMap = false, pollInterval = 500, onRender, onPlayStateChange } = {}) {
@@ -47,19 +54,14 @@ class MatchViewer {
         this.isPanning = false;
         this.lastMouseX = 0;
         this.lastMouseY = 0;
-        this.filters = {
-            player: true,
-            squad: true,
-            ally: true,
-            enemy: true,
-            capture_zone: true,
-            respawn: true,
-            other: true
-        };
-        this.blipSize = 1.5;
+        const filters = { player: true, squad: true, ally: true, enemy: true, capture_zone: true, respawn: true, other: true };
+        const settings = window.Settings.load(VIEW_STYLE.settingsKey, { ...VIEW_STYLE.defaults, filters });
+        this.filters = { ...filters, ...settings.filters };
+        this.blipSize = settings.blipSize;
+        this.lineScale = settings.lineScale;
+        this.trail = settings.trail;
         this.timelinePosition = 1.0;
         this.maxTimestamp = 0;
-        this.trail = 0;
         this.isPlaying = false;
         this.playbackFrame = null;
         this._resize();
@@ -70,7 +72,8 @@ class MatchViewer {
         } else {
             this._loadPositions();
         }
-        window.addEventListener('resize', () => this._resize());
+        // 布局网格变化不一定触发窗口 resize，直接观察画布容器。
+        new ResizeObserver(() => this._resize()).observe(this.canvas.parentElement);
     }
 
     _resize() {
@@ -453,7 +456,7 @@ class MatchViewer {
             if (!this.filters[category]) continue;
             const [start, end] = this._visibleRange(points, cutoff);
             if (start > end) continue;
-            if (end > start) this._drawTrack(category, points, start, end);
+            if (end > start) this._drawTrack(category, points, start, end, cutoff - this.trail * 1000);
             const point = points[end];
             if (cutoff - point.t <= VIEW_STYLE.aliveWindow) {
                 current.push({ category, point });
@@ -469,21 +472,42 @@ class MatchViewer {
         this.onRender?.(this);
     }
 
-    _drawTrack(category, points, start, end) {
+    _drawTrack(category, points, start, end, earliest) {
         const ctx = this.ctx;
-        ctx.beginPath();
-        ctx.moveTo(points[start].x * this.width, points[start].y * this.height);
-        for (let i = start + 1; i <= end; i++) {
-            ctx.lineTo(points[i].x * this.width, points[i].y * this.height);
+        for (const band of this._fadeBands(points, start, end, earliest)) {
+            ctx.beginPath();
+            ctx.moveTo(points[band.from].x * this.width, points[band.from].y * this.height);
+            for (let i = band.from + 1; i <= band.to; i++) {
+                ctx.lineTo(points[i].x * this.width, points[i].y * this.height);
+            }
+            this._strokeTrack(category, VIEW_STYLE.lineAlpha[category] * band.alpha);
         }
-        this._strokeTrack(category, VIEW_STYLE.lineAlpha[category]);
+    }
+
+    // 把可见段按时间等分成若干段，越旧越透明；显示全部时不淡化。
+    _fadeBands(points, start, end, earliest) {
+        if (this.trail === 0) return [{ from: start, to: end, alpha: 1 }];
+        const span = this.trail * 1000;
+        const count = VIEW_STYLE.fadeBands;
+        const bands = [];
+        let from = start;
+        for (let k = 1; k <= count && from < end; k++) {
+            const limit = earliest + span * k / count;
+            let to = k === count ? end : Math.max(from + 1, window.Tracks.lastIndexAtMost(points, limit, p => p.t));
+            to = Math.min(to, end);
+            const mid = (points[from].t + points[to].t) / 2;
+            bands.push({ from, to, alpha: Math.max(0, Math.min(1, (mid - earliest) / span)) });
+            from = to;
+        }
+        return bands;
     }
 
     _strokeTrack(category, alpha) {
         const ctx = this.ctx;
-        const width = VIEW_STYLE.lineWidth[category];
+        const width = VIEW_STYLE.lineWidth[category] * this.lineScale;
         ctx.lineWidth = (width + VIEW_STYLE.haloWidth) / this.zoom;
         ctx.strokeStyle = VIEW_STYLE.haloColor;
+        ctx.globalAlpha = alpha;
         ctx.stroke();
         ctx.lineWidth = width / this.zoom;
         ctx.strokeStyle = VIEW_STYLE.teamColors[category];
@@ -552,18 +576,33 @@ class MatchViewer {
         this._strokeTrack(category, 1);
     }
 
+    _saveSettings() {
+        window.Settings.save(VIEW_STYLE.settingsKey, {
+            trail: this.trail, blipSize: this.blipSize, lineScale: this.lineScale, filters: this.filters,
+        });
+    }
+
     setFilter(category, enabled) {
         this.filters[category] = enabled;
+        this._saveSettings();
         this._render();
     }
 
     setBlipSize(size) {
-        this.blipSize = Math.max(0.5, Math.min(3, size));
+        this.blipSize = clamp(size, VIEW_STYLE.blipRange);
+        this._saveSettings();
+        this._render();
+    }
+
+    setLineScale(scale) {
+        this.lineScale = clamp(scale, VIEW_STYLE.lineScaleRange);
+        this._saveSettings();
         this._render();
     }
 
     setTrail(seconds) {
         this.trail = seconds;
+        this._saveSettings();
         this._render();
     }
 

@@ -80,7 +80,7 @@ test('uses the selected replay time and the latest live time', () => {
 });
 
 test('includes both ends of the selected trail window', () => {
-    const viewer = makeViewer(load('tracks.js', 'viewer.js'));
+    const viewer = makeViewer(load('tracks.js', 'settings.js', 'viewer.js'));
     const points = Array.from({ length: 11 }, (_, i) => ({ t: i * 1000 }));
     viewer.setTrail(3);
     assert.deepEqual(Array.from(viewer._visibleRange(points, 10000)), [7, 10]);
@@ -124,4 +124,36 @@ test('restarts playback from the end and cancels the pending frame on pause', ()
     viewer.pause();
     assert.equal(cancelled, 7);
     assert.deepEqual(stateChanges, [true, false]);
+});
+
+test('fade bands cover the visible range from faint to opaque', () => {
+    const viewer = makeViewer(load('tracks.js', 'settings.js', 'viewer.js'), { trail: 30 });
+    const points = Array.from({ length: 31 }, (_, i) => ({ t: i * 1000 }));
+    const bands = viewer._fadeBands(points, 0, 30, 0);
+    assert.equal(bands.length, 8);
+    assert.equal(bands[0].from, 0);
+    assert.equal(bands.at(-1).to, 30);
+    assert.ok(bands[0].alpha < 0.1);
+    assert.ok(bands.at(-1).alpha > 0.9);
+    for (let i = 0; i < bands.length - 1; i++) assert.equal(bands[i].to, bands[i + 1].from);
+});
+
+test('no fade when the trail shows everything', () => {
+    const viewer = makeViewer(load('tracks.js', 'settings.js', 'viewer.js'), { trail: 0 });
+    const points = Array.from({ length: 11 }, (_, i) => ({ t: i * 1000 }));
+    assert.deepEqual(JSON.parse(JSON.stringify(viewer._fadeBands(points, 0, 10, 0))), [{ from: 0, to: 10, alpha: 1 }]);
+});
+
+test('blip size and line scale clamp and are saved', () => {
+    const context = load('tracks.js', 'settings.js', 'viewer.js');
+    const viewer = makeViewer(context);
+    viewer.setBlipSize(5);
+    assert.equal(viewer.blipSize, 1.5);
+    viewer.setBlipSize(0.1);
+    assert.equal(viewer.blipSize, 0.25);
+    viewer.setLineScale(5);
+    assert.equal(viewer.lineScale, 2);
+    viewer.setLineScale(0.1);
+    assert.equal(viewer.lineScale, 0.5);
+    assert.equal(JSON.parse(context.localStorage.getItem('wtp.viewer')).lineScale, 0.5);
 });
