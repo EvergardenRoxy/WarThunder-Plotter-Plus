@@ -145,19 +145,72 @@ def test_map_change_starts_new_match(setup, conn, map_png):
     assert len(db.get_all_matches(conn)) == 2
 
 
-def test_air_view_transform_applied(setup, conn, obj):
+@pytest.fixture
+def zone_frames(obj):
+    points = [(0.2, 0.2), (0.4, 0.3), (0.6, 0.7), (0.8, 0.5)]
+    ground = [obj(x, y, type="capture_zone") for x, y in points]
+    air = [obj(0.25 * x + 0.1, 0.25 * y + 0.2, type="capture_zone") for x, y in points]
+    return ground, air
+
+
+def test_air_view_transform_applied(setup, conn, obj, zone_frames):
     match, _, _ = setup
-    ground = [(0.2, 0.2), (0.4, 0.3), (0.6, 0.7), (0.8, 0.5)]
-    match.tick(0, True, {"army": "tank"}, [obj(x, y) for x, y in ground])
-    match.tick(1, True, {"army": "air"}, [obj(0.25 * x + 0.1, 0.25 * y + 0.2) for x, y in ground])
+    ground_zones, air_zones = zone_frames
+    ground = [(zone["x"], zone["y"]) for zone in ground_zones]
+    ground_objects = ground_zones + [obj(x, y) for x, y in ground]
+    air_objects = air_zones + [obj(zone["x"], zone["y"]) for zone in air_zones]
+    match.tick(0, True, {"army": "tank"}, ground_objects)
+    match.tick(1, True, {"army": "air"}, air_objects)
     stored = db.get_active_match(conn)
     assert (stored.air_transform_a, stored.air_transform_b, stored.air_transform_c, stored.air_transform_d) == (
         pytest.approx((0.25, 0.1, 0.25, 0.2))
     )
     bundle = db.get_positions_bundle(conn, stored.id, 1000)
     assert bundle["ticks"][0]["is_player_air_view"] == 1
-    for position, expected in zip(bundle["positions"], ground, strict=True):
+    for position, expected in zip(bundle["positions"], ground * 2, strict=True):
         assert (position["x_ground"], position["y_ground"]) == pytest.approx(expected)
+
+
+def test_plane_on_ground_frame_is_not_air_view(setup, conn, obj, zone_frames):
+    match, _, _ = setup
+    ground, _ = zone_frames
+    objects = ground + [obj(0.5, 0.5)]
+    match.tick(0, True, {"army": "tank"}, objects)
+    match.tick(1, True, {"army": "air"}, objects)
+    bundle = db.get_positions_bundle(conn, match.match_id, 1000)
+    assert bundle["ticks"][0]["is_player_air"] == 1
+    assert bundle["ticks"][0]["is_player_air_view"] == 0
+    assert all(position["x_ground"] is None for position in bundle["positions"])
+
+
+def test_air_view_persists_without_air_defence(setup, conn, zone_frames):
+    match, _, _ = setup
+    ground, air = zone_frames
+    match.tick(0, True, {"army": "tank"}, ground)
+    match.tick(1, True, {"army": "air"}, air)
+    match.tick(2, True, {"army": "air"}, air)
+    bundle = db.get_positions_bundle(conn, match.match_id, 0)
+    assert [tick["is_player_air_view"] for tick in bundle["ticks"]] == [0, 1, 1]
+
+
+def test_air_defence_forces_air_view(setup, conn, obj, zone_frames):
+    match, _, _ = setup
+    ground, _ = zone_frames
+    match.tick(0, True, {"army": "tank"}, ground)
+    match.tick(1, True, {"army": "tank"}, ground + [obj(0.5, 0.5, icon="Airdefence")])
+    bundle = db.get_positions_bundle(conn, match.match_id, 1000)
+    assert bundle["ticks"][0]["is_player_air_view"] == 1
+
+
+def test_tick_without_zones_keeps_view(setup, conn, obj, zone_frames):
+    match, _, _ = setup
+    ground, air = zone_frames
+    match.tick(0, True, {"army": "tank"}, ground)
+    match.tick(1, True, {"army": "air"}, air)
+    match.tick(2, True, {"army": "air"}, [obj(0.5, 0.5)])
+    match.tick(3, True, {"army": "air"}, air)
+    bundle = db.get_positions_bundle(conn, match.match_id, 0)
+    assert [tick["is_player_air_view"] for tick in bundle["ticks"]] == [0, 1, 1, 1]
 
 
 def test_air_map_captured(setup, conn, map_png, obj):

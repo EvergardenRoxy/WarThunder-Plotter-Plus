@@ -114,10 +114,12 @@ class MatchTracker:
         capture_zones = [
             (obj["x"], obj["y"]) for obj in valid_objects if obj.get("type") == CAPTURE_FILTERS.capture_zone_type
         ]
-        precision = CAPTURE_SETTINGS.signature_rounding
-        signature = tuple(sorted((round(x, precision), round(y, precision)) for x, y in capture_zones))
-        poi_changed = state.capture_signature is not None and signature != state.capture_signature
-        state.capture_signature = signature
+        poi_changed = False
+        if capture_zones:
+            precision = CAPTURE_SETTINGS.signature_rounding
+            signature = tuple(sorted((round(x, precision), round(y, precision)) for x, y in capture_zones))
+            poi_changed = state.capture_signature is not None and signature != state.capture_signature
+            state.capture_signature = signature
         if capture_zones and not state.initial_capture_set:
             count = len(capture_zones)
             db.set_initial_capture(
@@ -131,8 +133,12 @@ class MatchTracker:
             isinstance(icon := obj.get("icon"), str) and icon.lower() in CAPTURE_FILTERS.air_defence_icons
             for obj in valid_objects
         )
-        # 占领点坐标变化表示地图视角切换：上一帧是地面才算进入空中视角，否则是切回地面。
-        air_view = is_air or air_defence_seen or (poi_changed and not state.previous_air_view)
+        if air_defence_seen:
+            air_view = True
+        elif poi_changed:
+            air_view = not state.previous_air_view
+        else:
+            air_view = state.previous_air_view
         if air_view and not state.previous_air_view and state.transform is None and state.previous_objects:
             state.transform = fit_air_transform(state.previous_objects, objects)
             if state.transform is not None:
