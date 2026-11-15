@@ -30,6 +30,8 @@
 
 - 2026-11-15 · 2026-11-15-viewer-readability.md · Task 4 · `f4c6c5eeea1aee69bfd66160335a7eb5cde04db6` · 加入中英轨迹长度选项及 10 倍速播放；全量测试 161 项通过，2 项跳过。
 
+- 2026-11-15 · 2026-11-15-viewer-readability.md · Task 5 · `f3eb15ea16e0fb1d4bbd4762fd4b80d92c88e0e4` · 版本升至 0.3.2，双语变更日志已更新，便携 EXE 已构建并通过启动与关停检查；全量测试 161 项通过，2 项因缺上游样本跳过。
+
 ## 偏离
 
 - 2026-11-15 · Task 1 Step 2：`py -3.11` 返回 `No installed Python found!`，改用本机已安装的 Python 3.11.9 创建项目 `.venv`，其余 Python 命令均在该环境内执行。
