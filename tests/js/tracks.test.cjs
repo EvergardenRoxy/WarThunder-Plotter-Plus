@@ -3,7 +3,7 @@ const test = require('node:test');
 const { load } = require('./load.cjs');
 
 const { linkTracks, clusterPoints, lastIndexAtMost } = load('tracks.js').window.Tracks;
-const options = { maxSpeed: 0.008, jitter: 0.002, maxGap: 2000 };
+const options = { maxSpeed: 0.008, jitter: 0.002, maxGap: 6000 };
 
 test('links parallel movement without crossing lanes', () => {
     const frames = Array.from({ length: 10 }, (_, i) => ({
@@ -24,7 +24,7 @@ test('starts a new track after a jump', () => {
 });
 
 test('starts a new track after a long gap', () => {
-    const frames = [0, 4000].map(t => ({ t, points: [{ x: 0.5, y: 0.5 }] }));
+    const frames = [0, 7000].map(t => ({ t, points: [{ x: 0.5, y: 0.5 }] }));
     assert.equal(linkTracks(frames, options).length, 2);
 });
 
@@ -70,6 +70,15 @@ test('allows longer steps after longer gaps', () => {
     const frames = [
         { t: 0, points: [{ x: 0.4, y: 0.5 }] },
         { t: 1500, points: [{ x: 0.413, y: 0.5 }] },
+    ];
+    assert.equal(linkTracks(frames, options).length, 1);
+});
+
+test('reconnects a unit that was briefly off the map', () => {
+    // match/7 实测：敌机未被发现时会从地图上消失约 2～5 秒。
+    const frames = [
+        { t: 0, points: [{ x: 0.35, y: 0.45 }] },
+        { t: 4500, points: [{ x: 0.36, y: 0.452 }] },
     ];
     assert.equal(linkTracks(frames, options).length, 1);
 });

@@ -3,7 +3,12 @@ const VIEW_STYLE = Object.freeze({
     ownerColors: { ally: '#174DFF', enemy: '#fa0C00', neutral: '#ffffff' },
     maxColorDistance: 160,
     // 实测（2026-11-15 七场数据）：坦克与喷气机在归一化坐标中最快约 0.005/秒，取约 1.6 倍余量。
-    link: { maxSpeed: 0.008, jitter: 0.002, maxGap: 2000 },
+    // 未被发现的敌机会从地图上消失 2～5 秒，maxGap 允许其重新接上。
+    link: { maxSpeed: 0.008, jitter: 0.002, maxGap: 6000 },
+    // 相邻两点间隔超过它就视为不可见期间，不画连线。
+    gapLine: 1000,
+    // 敌方只在被发现时出现在地图上，消失不等于阵亡，只给这些阵营画 ×。
+    deathCategories: ['player', 'squad', 'ally'],
     aliveWindow: 2000,
     deathMinPoints: 20,
     poiClusterRadius: 0.02,
@@ -568,8 +573,7 @@ class MatchViewer {
             const point = points[end];
             if (cutoff - point.t <= VIEW_STYLE.aliveWindow) {
                 current.push({ category, point, previous: points[end - 1] });
-            } else if (end === points.length - 1 && points.length >= VIEW_STYLE.deathMinPoints &&
-                point.t < this.maxTimestamp - VIEW_STYLE.aliveWindow) {
+            } else if (this._isDeath(category, points, end, cutoff)) {
                 deaths.push({ category, point });
             }
         }
@@ -591,13 +595,30 @@ class MatchViewer {
         this.onEvents?.(visible);
     }
 
+    // 轨迹已结束且不可能再接上（超过 maxGap），并且该阵营总在地图上可见。
+    _isDeath(category, points, end, cutoff) {
+        const last = points[end];
+        return VIEW_STYLE.deathCategories.includes(category) &&
+            end === points.length - 1 &&
+            points.length >= VIEW_STYLE.deathMinPoints &&
+            last.t < cutoff - VIEW_STYLE.link.maxGap &&
+            last.t < this.maxTimestamp - VIEW_STYLE.link.maxGap;
+    }
+
+    _isGap(previous, point) {
+        return point.t - previous.t > VIEW_STYLE.gapLine;
+    }
+
     _drawTrack(category, points, start, end, earliest) {
         const ctx = this.ctx;
         for (const band of this._fadeBands(points, start, end, earliest)) {
             ctx.beginPath();
             ctx.moveTo(points[band.from].x * this.width, points[band.from].y * this.height);
             for (let i = band.from + 1; i <= band.to; i++) {
-                ctx.lineTo(points[i].x * this.width, points[i].y * this.height);
+                const x = points[i].x * this.width;
+                const y = points[i].y * this.height;
+                if (this._isGap(points[i - 1], points[i])) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
             }
             this._strokeTrack(category, VIEW_STYLE.lineAlpha[category] * band.alpha);
         }

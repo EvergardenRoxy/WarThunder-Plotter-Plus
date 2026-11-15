@@ -295,3 +295,19 @@ test('marker label shows the exact vehicle when known', () => {
     assert.equal(viewer._markerLabel({ icon: 'Player', vehicle: 'germ_pzkpfw_IV_ausf_F2' }), 'unit.Player · germ pzkpfw IV ausf F2');
     assert.equal(viewer._markerLabel({ icon: 'Fighter', vehicle: '' }), 'unit.Fighter');
 });
+
+test('death marks only for always-visible sides and only once a track cannot resume', () => {
+    const viewer = makeViewer(load('tracks.js', 'viewer.js'), { maxTimestamp: 100000 });
+    const points = Array.from({ length: 20 }, (_, i) => ({ t: 10000 + i * 250 }));
+    const last = points.at(-1).t;
+    assert.equal(viewer._isDeath('ally', points, 19, last + 3000), false);
+    assert.equal(viewer._isDeath('ally', points, 19, last + 7000), true);
+    assert.equal(viewer._isDeath('enemy', points, 19, last + 7000), false);
+    assert.equal(viewer._isDeath('ally', points.slice(0, 10), 9, last + 7000), false);
+});
+
+test('gaps in a track are not drawn as lines', () => {
+    const viewer = makeViewer(load('tracks.js', 'viewer.js'));
+    assert.equal(viewer._isGap({ t: 0 }, { t: 250 }), false);
+    assert.equal(viewer._isGap({ t: 0 }, { t: 2000 }), true);
+});
