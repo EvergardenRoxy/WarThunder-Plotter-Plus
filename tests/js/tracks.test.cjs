@@ -3,7 +3,7 @@ const test = require('node:test');
 const { load } = require('./load.cjs');
 
 const { linkTracks, clusterPoints, lastIndexAtMost } = load('tracks.js').window.Tracks;
-const options = { maxStep: 0.03, maxGap: 3000 };
+const options = { maxSpeed: 0.008, jitter: 0.002, maxGap: 2000 };
 
 test('links parallel movement without crossing lanes', () => {
     const frames = Array.from({ length: 10 }, (_, i) => ({
@@ -31,12 +31,12 @@ test('starts a new track after a long gap', () => {
 test('keeps steps short when points cross', () => {
     const frames = Array.from({ length: 6 }, (_, i) => ({
         t: i * 1000,
-        points: [{ x: 0.40 + i * 0.01, y: 0.5 }, { x: 0.46 - i * 0.01, y: 0.5 }],
+        points: [{ x: 0.40 + i * 0.008, y: 0.5 }, { x: 0.448 - i * 0.008, y: 0.5 }],
     }));
     const tracks = linkTracks(frames, options);
     assert.deepEqual(Array.from(tracks, track => track.length), [6, 6]);
     assert.ok(tracks.every(track => track.slice(1).every((point, i) =>
-        Math.hypot(point.x - track[i].x, point.y - track[i].y) <= options.maxStep
+        Math.hypot(point.x - track[i].x, point.y - track[i].y) <= options.jitter + options.maxSpeed + 1e-9
     )));
 });
 
@@ -55,4 +55,21 @@ test('clusters nearby points and returns the selected points', () => {
 test('finds the last item at or below the given value', () => {
     const items = [1, 3, 5];
     assert.deepEqual([0, 3, 4, 9].map(value => lastIndexAtMost(items, value, item => item)), [-1, 1, 1, 2]);
+});
+
+test('does not join a vanished track to a point beyond its reachable distance', () => {
+    // 一架飞机消失后，0.5 秒内在 0.03 外出现的点属于另一架，应另起一条轨迹。
+    const frames = [
+        { t: 0, points: [{ x: 0.4, y: 0.5 }] },
+        { t: 500, points: [{ x: 0.43, y: 0.5 }] },
+    ];
+    assert.equal(linkTracks(frames, options).length, 2);
+});
+
+test('allows longer steps after longer gaps', () => {
+    const frames = [
+        { t: 0, points: [{ x: 0.4, y: 0.5 }] },
+        { t: 1500, points: [{ x: 0.413, y: 0.5 }] },
+    ];
+    assert.equal(linkTracks(frames, options).length, 1);
 });

@@ -132,7 +132,7 @@ test('fade bands cover the visible range from faint to opaque', () => {
     const viewer = makeViewer(load('tracks.js', 'settings.js', 'viewer.js'), { trail: 30 });
     const points = Array.from({ length: 31 }, (_, i) => ({ t: i * 1000 }));
     const bands = viewer._fadeBands(points, 0, 30, 0);
-    assert.equal(bands.length, 8);
+    assert.equal(bands.length, 20);
     assert.equal(bands[0].from, 0);
     assert.equal(bands.at(-1).to, 30);
     assert.ok(bands[0].alpha < 0.1);
@@ -269,4 +269,29 @@ test('loading events advances the cursor', async () => {
     await viewer._loadEvents();
     assert.match(urls[1], /since=1501/);
     assert.equal(viewer.events.length, 2);
+});
+
+test('reset view centers the square map in a wide canvas', () => {
+    const viewer = makeViewer(load('tracks.js', 'viewer.js'), {
+        width: 500, height: 500, viewWidth: 1000, viewHeight: 500, zoom: 3, panX: 7, panY: 7,
+        _updateZoomDisplay() {},
+    });
+    viewer.resetView();
+    assert.deepEqual([viewer.zoom, viewer.panX, viewer.panY], [1, 250, 0]);
+});
+
+test('panning is limited by the canvas, not the map', () => {
+    const viewer = makeViewer(load('tracks.js', 'viewer.js'), {
+        width: 500, height: 500, viewWidth: 1000, viewHeight: 500, zoom: 1, panX: 990, panY: 0,
+    });
+    viewer._clampPan();
+    assert.equal(viewer.panX, 950);
+});
+
+test('marker label shows the exact vehicle when known', () => {
+    const context = load('tracks.js', 'viewer.js');
+    context.t = key => key;
+    const viewer = makeViewer(context);
+    assert.equal(viewer._markerLabel({ icon: 'Player', vehicle: 'germ_pzkpfw_IV_ausf_F2' }), 'unit.Player · germ pzkpfw IV ausf F2');
+    assert.equal(viewer._markerLabel({ icon: 'Fighter', vehicle: '' }), 'unit.Fighter');
 });

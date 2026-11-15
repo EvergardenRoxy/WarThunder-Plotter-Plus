@@ -2,7 +2,8 @@ const VIEW_STYLE = Object.freeze({
     teamColors: { player: '#faC81E', squad: '#67D756', ally: '#174DFF', enemy: '#fa0C00', other: '#888888' },
     ownerColors: { ally: '#174DFF', enemy: '#fa0C00', neutral: '#ffffff' },
     maxColorDistance: 160,
-    link: { ground: { maxStep: 0.03, maxGap: 3000 }, air: { maxStep: 0.06, maxGap: 3000 } },
+    // 实测（2026-11-15 七场数据）：坦克与喷气机在归一化坐标中最快约 0.005/秒，取约 1.6 倍余量。
+    link: { maxSpeed: 0.008, jitter: 0.002, maxGap: 2000 },
     aliveWindow: 2000,
     deathMinPoints: 20,
     poiClusterRadius: 0.02,
@@ -33,7 +34,7 @@ const VIEW_STYLE = Object.freeze({
     capture: { radius: 12, alpha: 0.3, border: 2 },
     respawn: { size: 8, alpha: 0.5, border: 1.5 },
     trailOptions: [10, 30, 60, 120, 0],
-    fadeBands: 8,
+    fadeBands: 20,
     blipRange: [0.25, 1.5],
     lineScaleRange: [0.5, 2],
     speedRange: [5, 40],
@@ -106,14 +107,21 @@ class MatchViewer {
         const padding = getComputedStyle(container);
         const width = container.clientWidth - parseFloat(padding.paddingLeft) - parseFloat(padding.paddingRight);
         const height = container.clientHeight - parseFloat(padding.paddingTop) - parseFloat(padding.paddingBottom);
-        const size = Math.min(width, height, 1500);
+        // 画布铺满容器；地图仍是正方形（width/height 为地图边长），居中放置。
+        const size = Math.min(width, height);
+        const [oldX, oldY] = this.viewWidth === undefined ? [0, 0] : this._centerOffset();
         this.width = size;
         this.height = size;
+        this.viewWidth = width;
+        this.viewHeight = height;
+        const [newX, newY] = this._centerOffset();
+        this.panX += newX - oldX;
+        this.panY += newY - oldY;
         this.dpr = window.devicePixelRatio || 1;
-        this.canvas.width = Math.round(size * this.dpr);
-        this.canvas.height = Math.round(size * this.dpr);
-        this.canvas.style.width = `${size}px`;
-        this.canvas.style.height = `${size}px`;
+        this.canvas.width = Math.round(width * this.dpr);
+        this.canvas.height = Math.round(height * this.dpr);
+        this.canvas.style.width = `${width}px`;
+        this.canvas.style.height = `${height}px`;
         this._clampPan();
         this._render();
     }
@@ -180,20 +188,33 @@ class MatchViewer {
         const hit = this.isPanning ? null : this._markerAt(e.clientX - rect.left, e.clientY - rect.top);
         tooltip.hidden = !hit;
         if (!hit) return;
-        tooltip.textContent = t(`unit.${hit.icon}`);
+        tooltip.textContent = this._markerLabel(hit);
         const wrapper = this.canvas.parentElement.getBoundingClientRect();
         tooltip.style.left = `${e.clientX - wrapper.left + 12}px`;
         tooltip.style.top = `${e.clientY - wrapper.top + 12}px`;
     }
 
+    // 缩放为 1 时让地图居中的平移量。
+    _centerOffset() {
+        return [(this.viewWidth - this.width) / 2, (this.viewHeight - this.height) / 2];
+    }
+
+    // 兵种名；已知具体型号（只有自己）时一并显示。
+    _markerLabel(marker) {
+        const name = t(`unit.${marker.icon}`);
+        return marker.vehicle ? `${name} · ${this._vehicleName(marker.vehicle)}` : name;
+    }
+
+    _vehicleName(raw) {
+        return raw.split('/').at(-1).replace(/_/g, ' ');
+    }
+
     _clampPan() {
-        const w = this.width;
-        const h = this.height;
-        const scaledW = w * this.zoom;
-        const scaledH = h * this.zoom;
+        const scaledW = this.width * this.zoom;
+        const scaledH = this.height * this.zoom;
         const margin = 50;
-        this.panX = Math.max(-(scaledW - margin), Math.min(w - margin, this.panX));
-        this.panY = Math.max(-(scaledH - margin), Math.min(h - margin, this.panY));
+        this.panX = Math.max(-(scaledW - margin), Math.min(this.viewWidth - margin, this.panX));
+        this.panY = Math.max(-(scaledH - margin), Math.min(this.viewHeight - margin, this.panY));
     }
 
     _updateZoomDisplay() {
@@ -205,8 +226,7 @@ class MatchViewer {
 
     resetView() {
         this.zoom = 1.0;
-        this.panX = 0;
-        this.panY = 0;
+        [this.panX, this.panY] = this._centerOffset();
         this._render();
         this._updateZoomDisplay();
     }
@@ -214,8 +234,8 @@ class MatchViewer {
     zoomIn() {
         const newZoom = Math.min(this.maxZoom, this.zoom * 1.25);
         if (newZoom !== this.zoom) {
-            const cx = this.width / 2;
-            const cy = this.height / 2;
+            const cx = this.viewWidth / 2;
+            const cy = this.viewHeight / 2;
             const zoomRatio = newZoom / this.zoom;
             this.panX = cx - (cx - this.panX) * zoomRatio;
             this.panY = cy - (cy - this.panY) * zoomRatio;
@@ -229,8 +249,8 @@ class MatchViewer {
     zoomOut() {
         const newZoom = Math.max(this.minZoom, this.zoom / 1.25);
         if (newZoom !== this.zoom) {
-            const cx = this.width / 2;
-            const cy = this.height / 2;
+            const cx = this.viewWidth / 2;
+            const cy = this.viewHeight / 2;
             const zoomRatio = newZoom / this.zoom;
             this.panX = cx - (cx - this.panX) * zoomRatio;
             this.panY = cy - (cy - this.panY) * zoomRatio;
@@ -395,7 +415,7 @@ class MatchViewer {
         if (vehicleType) {
             const vehicle = document.createElement('span');
             vehicle.className = 'vehicle-name';
-            vehicle.textContent = vehicleType.split('/').at(-1).replace(/_/g, ' ');
+            vehicle.textContent = this._vehicleName(vehicleType);
             statsEl.append(document.createElement('br'), vehicle);
         }
     }
@@ -457,7 +477,8 @@ class MatchViewer {
             if (!grouped.has(category)) grouped.set(category, new Map());
             const times = grouped.get(category);
             if (!times.has(pos.timestamp)) times.set(pos.timestamp, []);
-            times.get(pos.timestamp).push({ ...point, icon: pos.icon });
+            const vehicle = pos.icon === VIEW_STYLE.playerIcon ? pos.vehicle_type : '';
+            times.get(pos.timestamp).push({ ...point, icon: pos.icon, vehicle });
         }
         this.visiblePois = [];
         for (const pos of this.pois) {
@@ -465,13 +486,12 @@ class MatchViewer {
             if (point) this.visiblePois.push({ ...pos, ...point });
         }
 
-        const options = this.isAirMap ? VIEW_STYLE.link.air : VIEW_STYLE.link.ground;
         this.tracks = [];
         for (const category of VIEW_STYLE.trackOrder) {
             if (!grouped.has(category)) continue;
             const frames = Array.from(grouped.get(category), ([t, points]) => ({ t, points }));
             frames.sort((a, b) => a.t - b.t);
-            for (const points of window.Tracks.linkTracks(frames, options)) {
+            for (const points of window.Tracks.linkTracks(frames, VIEW_STYLE.link)) {
                 this.tracks.push({ category, points });
             }
         }
@@ -504,7 +524,7 @@ class MatchViewer {
         const h = this.height;
         ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
         ctx.fillStyle = '#1a1a1a';
-        ctx.fillRect(0, 0, w, h);
+        ctx.fillRect(0, 0, this.viewWidth, this.viewHeight);
         ctx.save();
         ctx.translate(this.panX, this.panY);
         ctx.scale(this.zoom, this.zoom);
@@ -665,7 +685,8 @@ class MatchViewer {
             ctx.stroke();
         }
         this.markers.push({
-            sx: x * this.zoom + this.panX, sy: y * this.zoom + this.panY, r: size * this.zoom / 2, icon: point.icon,
+            sx: x * this.zoom + this.panX, sy: y * this.zoom + this.panY, r: size * this.zoom / 2,
+            icon: point.icon, vehicle: point.vehicle,
         });
     }
 

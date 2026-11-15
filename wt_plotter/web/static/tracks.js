@@ -1,6 +1,7 @@
 // 把逐帧的无编号点串成轨迹，按最近距离贪心配对。
-// frames 按 t 升序，maxStep 限制位移，maxGap 限制中断时长。
-function linkTracks(frames, { maxStep, maxGap }) {
+// frames 按 t 升序（毫秒）。可接续的距离 = jitter + maxSpeed × 间隔秒数，
+// maxGap 限制中断时长。
+function linkTracks(frames, { maxSpeed, jitter, maxGap }) {
     const tracks = [];
     let open = [];
     for (const frame of frames) {
@@ -10,7 +11,7 @@ function linkTracks(frames, { maxStep, maxGap }) {
             open.forEach((track, ti) => {
                 const last = track.points[track.points.length - 1];
                 const d = Math.hypot(point.x - last.x, point.y - last.y);
-                if (d <= maxStep) pairs.push([d, ti, pi]);
+                if (d <= jitter + maxSpeed * (frame.t - track.lastT) / 1000) pairs.push([d, ti, pi]);
             });
         });
         pairs.sort((a, b) => a[0] - b[0]);
