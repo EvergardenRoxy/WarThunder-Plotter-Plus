@@ -28,6 +28,7 @@ class PathSettings:
     missing_hash_log: Path = DATA_DIR / "missing_map_hashes.log"
     settings_path: Path = DATA_DIR / "settings.json"
     log_path: Path = DATA_DIR / "wt_plotter.log"
+    capture_lock: Path = DATA_DIR / "capture.lock"
 
 
 @dataclass(frozen=True)

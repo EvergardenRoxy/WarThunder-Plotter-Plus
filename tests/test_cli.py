@@ -1,12 +1,16 @@
+from dataclasses import replace
 import socket
 from threading import Thread
 from time import monotonic, sleep
+from unittest.mock import Mock
 
 from click.testing import CliRunner
 import pytest
 import requests
 
-from wt_plotter.cli import another_instance_running, cli, run_server
+from wt_plotter import cli as cli_module
+from wt_plotter.cli import cli, run_server, running_instance_status
+from wt_plotter.process_lock import LockHeld, hold_lock
 from wt_plotter.web.app import create_app
 
 
@@ -50,13 +54,48 @@ def test_run_server_stops_on_shutdown(running_server):
 
 def test_instance_probe(running_server):
     port, url, thread = running_server
-    assert another_instance_running(HOST, port)
+    assert running_instance_status(HOST, port)["capturing"] is False
     requests.post(f"{url}/shutdown", timeout=1).raise_for_status()
     thread.join(timeout=3)
-    assert not another_instance_running(HOST, port)
+    assert running_instance_status(HOST, port) is None
 
 
 def test_help_lists_commands():
     result = CliRunner().invoke(cli, ["--help"])
     assert result.exit_code == 0
     assert all(name in result.output for name in ("watch", "serve", "capture"))
+
+
+def test_lock_is_exclusive_and_released(tmp_path):
+    path = tmp_path / "data" / "capture.lock"
+    with hold_lock(path):
+        with pytest.raises(LockHeld):
+            with hold_lock(path):
+                pass
+    with hold_lock(path):
+        pass
+
+
+def test_second_capture_is_refused(tmp_path, monkeypatch):
+    paths = replace(cli_module.PATHS, data_dir=tmp_path, capture_lock=tmp_path / "capture.lock")
+    monkeypatch.setattr(cli_module, "PATHS", paths)
+    capturer = Mock()
+    monkeypatch.setattr(cli_module, "Capturer", capturer)
+    with hold_lock(paths.capture_lock):
+        result = CliRunner().invoke(cli, ["capture"])
+    assert result.exit_code == 1
+    assert "Another capture" in result.output
+    capturer.assert_not_called()
+
+
+def test_watch_warns_when_running_instance_is_not_capturing(running_server, monkeypatch, caplog):
+    port, _, _ = running_server
+    monkeypatch.setattr(cli_module.webbrowser, "open", Mock())
+    capturer = Mock()
+    monkeypatch.setattr(cli_module, "Capturer", capturer)
+    with caplog.at_level("WARNING"):
+        result = CliRunner().invoke(cli, ["watch", "--port", str(port)])
+    assert result.exit_code == 0
+    assert "not capturing" in caplog.text
+    capturer.assert_not_called()
+    cli_module.webbrowser.open.assert_called_once()

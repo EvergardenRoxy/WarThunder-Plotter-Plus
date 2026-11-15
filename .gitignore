@@ -10,4 +10,5 @@ data/matches*
 data/missing*
 data/settings.json
 data/*.log
+data/*.lock
 .pytest_cache/

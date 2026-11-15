@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import logging
 from pathlib import Path
 import shutil
@@ -15,6 +16,7 @@ from wt_plotter.capture.capturer import Capturer
 from wt_plotter.capture.client import TelemetryClient
 from wt_plotter.config import APP_SETTINGS, PATHS
 from wt_plotter.desktop import tray, updater
+from wt_plotter.process_lock import LockHeld, hold_lock
 from wt_plotter.web.app import create_app
 
 
@@ -28,23 +30,46 @@ def run_server(app: Flask, host: str, port: int) -> None:
         server.serve_forever()
 
 
-def another_instance_running(host: str, port: int) -> bool:
+def running_instance_status(host: str, port: int) -> dict | None:
+    """返回已在该地址运行的实例的状态，没有则返回 None。"""
     try:
-        return requests.get(f"http://{host}:{port}/api/status", timeout=1.0).ok
+        response = requests.get(f"http://{host}:{port}/api/status", timeout=1.0)
     except requests.RequestException:
-        return False
+        return None
+    return response.json() if response.ok else None
+
+
+@contextmanager
+def single_capturer():
+    """同一数据目录只允许一个采集器，否则会互相关闭对方的比赛。"""
+    try:
+        with hold_lock(PATHS.capture_lock):
+            yield
+    except LockHeld:
+        logger.error("Another capture is already recording into %s", PATHS.data_dir)
+        raise click.ClickException(f"Another capture is already recording into {PATHS.data_dir}.")
 
 
 def _run_web_mode(host: str, port: int, capture_enabled: bool) -> None:
     local_host = "127.0.0.1" if host == "0.0.0.0" else host
     page = "/live" if capture_enabled else "/"
     url = f"http://{local_host}:{port}{page}"
-    if another_instance_running(local_host, port):
+    status = running_instance_status(local_host, port)
+    if status is not None:
+        if capture_enabled and not status["capturing"]:
+            logger.warning("The instance at %s is not capturing; quit it to start recording.", url)
         if APP_SETTINGS.open_browser_on_start:
             webbrowser.open(url)
         return
 
-    capturer = Capturer(PATHS.db_path, PATHS.maps_dir, TelemetryClient()) if capture_enabled else None
+    if capture_enabled:
+        with single_capturer():
+            _serve(host, port, local_host, url, Capturer(PATHS.db_path, PATHS.maps_dir, TelemetryClient()))
+    else:
+        _serve(host, port, local_host, url, None)
+
+
+def _serve(host: str, port: int, local_host: str, url: str, capturer: Capturer | None) -> None:
     app = create_app(PATHS.db_path, PATHS.maps_dir, PATHS.settings_path, capturer)
     try:
         if capturer is not None:
@@ -88,13 +113,14 @@ def serve(host: str, port: int) -> None:
 @cli.command()
 def capture() -> None:
     """Record matches in the background until interrupted."""
-    capturer = Capturer(PATHS.db_path, PATHS.maps_dir, TelemetryClient())
-    capturer.start()
-    try:
-        while capturer.is_running:
-            time.sleep(0.2)
-    finally:
-        capturer.stop()
+    with single_capturer():
+        capturer = Capturer(PATHS.db_path, PATHS.maps_dir, TelemetryClient())
+        capturer.start()
+        try:
+            while capturer.is_running:
+                time.sleep(0.2)
+        finally:
+            capturer.stop()
 
 
 def _log_thread_failure(args: threading.ExceptHookArgs) -> None:
