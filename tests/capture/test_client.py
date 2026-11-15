@@ -22,6 +22,7 @@ def test_connection_refused_returns_none(response):
     assert client.fetch_indicators() is None
     assert client.fetch_objects() is None
     assert client.fetch_map_image() is None
+    assert client.fetch_damage(0) is None
 
 
 def test_timeout_returns_none(response):
@@ -61,3 +62,16 @@ def test_urls(response):
         f"http://127.0.0.1:8111/{endpoint}"
         for endpoint in ("map_info.json", "indicators", "map_obj.json", "map.img")
     ]
+
+
+# 社区资料中的 /hudmsg 格式，尚未用真实游戏数据核对。
+HUDMSG = {"events": [], "damage": [
+    {"id": 5, "msg": "A (Tiger E) destroyed B (M4A3)", "sender": "", "enemy": False, "mode": "", "time": 95},
+]}
+
+
+def test_fetch_damage(response):
+    resp, get = response
+    resp.json.return_value = HUDMSG
+    assert TelemetryClient().fetch_damage(4) == HUDMSG["damage"]
+    assert get.call_args.args[0] == "http://127.0.0.1:8111/hudmsg?lastEvt=0&lastDmg=4"

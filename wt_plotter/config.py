@@ -50,6 +50,7 @@ class CaptureEndpoints:
     map_img_path: str = "map.img"
     map_info_path: str = "map_info.json"
     indicators_path: str = "indicators"
+    hudmsg_path: str = "hudmsg"
 
     @property
     def map_obj_url(self) -> str:
@@ -66,6 +67,10 @@ class CaptureEndpoints:
     @property
     def indicators_url(self) -> str:
         return f"{self.base_url}/{self.indicators_path}"
+
+    def hudmsg_url(self, last_damage: int) -> str:
+        # 只取损伤播报，事件游标固定为 0。
+        return f"{self.base_url}/{self.hudmsg_path}?lastEvt=0&lastDmg={last_damage}"
 
 
 @dataclass(frozen=True)
@@ -121,6 +126,7 @@ class CaptureTimeouts:
     async_map_info: float = 1.0
     async_indicators: float = 1.0
     async_map_obj: float = 1.0
+    async_hudmsg: float = 1.0
     thread_join: float = 3.0
 
 

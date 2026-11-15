@@ -23,7 +23,7 @@ def test_schema_matches_upstream(conn):
     tables = conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
     assert {row["name"] for row in tables} - {"sqlite_sequence"} == {
         "matches", "ticks", "positions", "enum_colors", "enum_types",
-        "enum_icons", "enum_army_types", "enum_vehicle_types",
+        "enum_icons", "enum_army_types", "enum_vehicle_types", "events",
     }
     columns = conn.execute("PRAGMA table_info(matches)").fetchall()
     assert [row["name"] for row in columns] == [
@@ -126,3 +126,23 @@ def test_first_sortie_army(conn):
     for timestamp, army, vehicle in ((1.0, "tank", ""), (2.0, "air", "f-4s"), (3.0, "tank", "germ_hummel")):
         db.add_tick(conn, match_id, db.TickRecord(timestamp, army, vehicle, 0, 0), [POSITION])
     assert db.first_sortie_army(conn, match_id, placeholders) == "air"
+
+
+def test_events_roundtrip(conn):
+    match_id = db.start_match(conn, "hash")
+    db.add_events(conn, match_id, [
+        db.EventRecord(3.0, 2, "second", "{}"),
+        db.EventRecord(1.0, 1, "first", "{}"),
+    ])
+    assert db.get_events(conn, match_id, 0) == [
+        {"timestamp": 1000, "msg": "first"}, {"timestamp": 3000, "msg": "second"},
+    ]
+    assert db.get_events(conn, match_id, 2000) == [{"timestamp": 3000, "msg": "second"}]
+
+
+def test_delete_match_removes_events(conn):
+    match_id = db.start_match(conn, "hash")
+    db.add_events(conn, match_id, [db.EventRecord(1.0, 1, "m", "{}")])
+    db.end_match(conn, match_id)
+    db.delete_match(conn, match_id)
+    assert conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 0

@@ -272,3 +272,56 @@ def test_return_to_ground_is_not_air_view(setup, conn, obj):
     # 空中那一帧换算回地面坐标，回到地面后不再换算。
     assert bundle["positions"][4]["x_ground"] == pytest.approx(0.2, abs=1e-4)
     assert all(p["x_ground"] is None for p in bundle["positions"][8:])
+
+
+def _damage(game_id, msg="A (Tiger E) destroyed B (M4A3)"):
+    return {"id": game_id, "msg": msg, "sender": "", "enemy": False, "mode": "", "time": 90}
+
+
+def _events(conn):
+    return conn.execute("SELECT timestamp_ms, game_id, msg, raw FROM events ORDER BY id").fetchall()
+
+
+def test_first_damage_batch_is_skipped(setup, conn, obj):
+    tracker_, _, _ = setup
+    tracker_.tick(100.0, True, {}, [obj(0.5, 0.5)])
+    tracker_.record_damage(100.5, [_damage(3), _damage(5)])
+    assert _events(conn) == []
+    assert tracker_.damage_cursor == 5
+
+
+def test_damage_recorded_after_prime(setup, conn, obj):
+    tracker_, _, _ = setup
+    tracker_.tick(100.0, True, {}, [obj(0.5, 0.5)])
+    tracker_.record_damage(100.5, [_damage(5)])
+    tracker_.record_damage(102.5, [_damage(6, "C 击毁了 D")])
+    [row] = _events(conn)
+    assert (row["timestamp_ms"], row["game_id"], row["msg"]) == (2500, 6, "C 击毁了 D")
+    assert json.loads(row["raw"]) == _damage(6, "C 击毁了 D")
+    assert tracker_.damage_cursor == 6
+
+
+def test_damage_without_match_ignored(setup, conn):
+    tracker_, _, _ = setup
+    tracker_.record_damage(1.0, [_damage(1)])
+    assert tracker_.damage_cursor == 0
+    assert _events(conn) == []
+
+
+def test_new_match_resets_cursor(setup, conn, obj):
+    tracker_, _, _ = setup
+    tracker_.tick(100.0, True, {}, [obj(0.5, 0.5)])
+    tracker_.record_damage(100.5, [_damage(5)])
+    tracker_.end_match()
+    tracker_.tick(200.0, True, {}, [obj(0.5, 0.5)])
+    assert tracker_.damage_cursor == 0
+    tracker_.record_damage(200.5, [_damage(1)])
+    assert _events(conn) == []
+
+
+def test_empty_first_batch_primes(setup, conn, obj):
+    tracker_, _, _ = setup
+    tracker_.tick(100.0, True, {}, [obj(0.5, 0.5)])
+    tracker_.record_damage(100.5, [])
+    tracker_.record_damage(101.0, [_damage(1)])
+    assert len(_events(conn)) == 1

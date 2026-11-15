@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
+import json
 from pathlib import Path
 from sqlite3 import Connection
 
@@ -26,6 +27,8 @@ class _MatchState:
     previous_objects: list[dict] = field(default_factory=list)
     previous_air_view: bool = False
     transform: tuple[float, float, float, float] | None = None
+    damage_cursor: int = 0
+    damage_primed: bool = False
 
 
 class MatchTracker:
@@ -54,6 +57,25 @@ class MatchTracker:
         self._state.invalid_since = None
         if objects:
             self._capture_positions(now, indicators or {}, objects)
+
+    @property
+    def damage_cursor(self) -> int:
+        return self._state.damage_cursor
+
+    def record_damage(self, now: float, entries: list[dict]) -> None:
+        """保存播报；每场第一批只推进游标，跳过上一场残留的消息。"""
+        state = self._state
+        if state.match_id is None:
+            return
+        if entries:
+            state.damage_cursor = max(entry["id"] for entry in entries)
+        if not state.damage_primed:
+            state.damage_primed = True
+            return
+        db.add_events(self.conn, state.match_id, [
+            db.EventRecord(now - state.started_at, entry["id"], entry["msg"], json.dumps(entry, ensure_ascii=False))
+            for entry in entries
+        ])
 
     def end_match(self) -> None:
         if self.match_id is not None:

@@ -37,6 +37,14 @@ class TickRecord:
 
 
 @dataclass
+class EventRecord:
+    timestamp: float
+    game_id: int
+    msg: str
+    raw: str
+
+
+@dataclass
 class PositionRecord:
     x: float
     y: float
@@ -138,6 +146,17 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (icon_id) REFERENCES enum_icons(id)
         );
 
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            match_id INTEGER NOT NULL,
+            timestamp_ms INTEGER NOT NULL,
+            game_id INTEGER NOT NULL,
+            msg TEXT NOT NULL,
+            raw TEXT NOT NULL,
+            FOREIGN KEY (match_id) REFERENCES matches(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_events_match_ts ON events(match_id, timestamp_ms);
         CREATE INDEX IF NOT EXISTS idx_positions_match ON positions(match_id);
         CREATE INDEX IF NOT EXISTS idx_positions_tick ON positions(tick_id);
         CREATE INDEX IF NOT EXISTS idx_ticks_match_ts ON ticks(match_id, timestamp_ms);
@@ -255,6 +274,22 @@ def add_tick(conn: _Connection, match_id: int, tick: TickRecord, positions: list
     conn.enum_ids.update(pending)
 
 
+def add_events(conn: sqlite3.Connection, match_id: int, events: list[EventRecord]) -> None:
+    with conn:
+        conn.executemany(
+            "INSERT INTO events (match_id, timestamp_ms, game_id, msg, raw) VALUES (?, ?, ?, ?, ?)",
+            ((match_id, round(e.timestamp * 1000), e.game_id, e.msg, e.raw) for e in events),
+        )
+
+
+def get_events(conn: sqlite3.Connection, match_id: int, since_ms: int) -> list[dict]:
+    rows = conn.execute(
+        "SELECT timestamp_ms, msg FROM events WHERE match_id = ? AND timestamp_ms >= ? ORDER BY timestamp_ms, id",
+        (match_id, since_ms),
+    )
+    return [{"timestamp": row["timestamp_ms"], "msg": row["msg"]} for row in rows]
+
+
 def get_active_match(conn: sqlite3.Connection) -> Match | None:
     row = conn.execute("SELECT * FROM matches WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1").fetchone()
     return Match(**dict(row)) if row is not None else None
@@ -343,6 +378,7 @@ def get_latest_tick(conn: sqlite3.Connection, match_id: int) -> TickRecord | Non
 
 def delete_match(conn: sqlite3.Connection, match_id: int) -> None:
     with conn:
+        conn.execute("DELETE FROM events WHERE match_id = ?", (match_id,))
         conn.execute("DELETE FROM positions WHERE match_id = ?", (match_id,))
         conn.execute("DELETE FROM ticks WHERE match_id = ?", (match_id,))
         conn.execute("DELETE FROM matches WHERE id = ?", (match_id,))

@@ -16,6 +16,7 @@ def client():
         "fetch_indicators.return_value": None,
         "fetch_objects.return_value": None,
         "fetch_map_image.return_value": None,
+        "fetch_damage.return_value": None,
     })
 
 
@@ -74,3 +75,23 @@ def test_thread_dies_on_error(capturer, client, monkeypatch):
         sleep(0.01)
     assert capturer.is_running is False
     assert len(errors) == 1 and isinstance(errors[0], RuntimeError)
+
+
+def test_damage_unavailable_keeps_tracking(capturer, client, conn, obj):
+    client.fetch_map_info.return_value = {"valid": True}
+    client.fetch_objects.return_value = [obj(0.5, 0.5)]
+    capturer.run_once(0)
+    capturer.run_once(1)
+    match = db.get_active_match(conn)
+    assert db.count_positions(conn, match.id) == 2
+    client.fetch_damage.assert_called_with(0)
+
+
+def test_damage_fetched_with_cursor(capturer, client, conn, obj):
+    client.fetch_map_info.return_value = {"valid": True}
+    client.fetch_objects.return_value = [obj(0.5, 0.5)]
+    client.fetch_damage.return_value = [{"id": 7, "msg": "m", "time": 1}]
+    capturer.run_once(0)
+    client.fetch_damage.return_value = []
+    capturer.run_once(1)
+    client.fetch_damage.assert_called_with(7)
