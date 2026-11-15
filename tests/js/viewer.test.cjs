@@ -78,3 +78,50 @@ test('uses the selected replay time and the latest live time', () => {
     viewer.isLive = true;
     assert.equal(viewer._cutoff(), 10000);
 });
+
+test('includes both ends of the selected trail window', () => {
+    const viewer = makeViewer(load('tracks.js', 'viewer.js'));
+    const points = Array.from({ length: 11 }, (_, i) => ({ t: i * 1000 }));
+    viewer.setTrail(3);
+    assert.deepEqual(Array.from(viewer._visibleRange(points, 10000)), [7, 10]);
+    assert.deepEqual(Array.from(viewer._visibleRange(points, 9500)), [7, 9]);
+    viewer.setTrail(0);
+    assert.deepEqual(Array.from(viewer._visibleRange(points, 9500)), [0, 9]);
+});
+
+test('advances playback at 10x and stops at the end', () => {
+    const context = load('tracks.js', 'viewer.js');
+    context.cancelAnimationFrame = () => {};
+    const viewer = makeViewer(context, { maxTimestamp: 10000, timelinePosition: 0.5, isPlaying: true });
+    viewer._advancePlayback(100);
+    assert.equal(viewer.timelinePosition, 0.6);
+    assert.equal(viewer.isPlaying, true);
+    viewer.timelinePosition = 0.95;
+    viewer._advancePlayback(100);
+    assert.equal(viewer.timelinePosition, 1);
+    assert.equal(viewer.isPlaying, false);
+});
+
+test('restarts playback from the end and cancels the pending frame on pause', () => {
+    const context = load('tracks.js', 'viewer.js');
+    const stateChanges = [];
+    let scheduled;
+    let cancelled;
+    context.requestAnimationFrame = callback => {
+        scheduled = callback;
+        return 7;
+    };
+    context.cancelAnimationFrame = id => { cancelled = id; };
+    const viewer = makeViewer(context, {
+        maxTimestamp: 10000,
+        onPlayStateChange(isPlaying) { stateChanges.push(isPlaying); },
+    });
+    viewer.play();
+    assert.equal(viewer.timelinePosition, 0);
+    scheduled(0);
+    scheduled(100);
+    assert.equal(viewer.timelinePosition, 0.1);
+    viewer.pause();
+    assert.equal(cancelled, 7);
+    assert.deepEqual(stateChanges, [true, false]);
+});

@@ -16,10 +16,12 @@ const VIEW_STYLE = Object.freeze({
     deathSize: 2.5,
     capture: { radius: 12, alpha: 0.3, border: 2 },
     respawn: { size: 8, alpha: 0.5, border: 1.5 },
+    trailOptions: [0, 60, 30, 10],
+    playbackSpeed: 10,
 });
 
 class MatchViewer {
-    constructor(canvasId, matchId, { isLive = false, isAirMap = false, pollInterval = 500, onRender } = {}) {
+    constructor(canvasId, matchId, { isLive = false, isAirMap = false, pollInterval = 500, onRender, onPlayStateChange } = {}) {
         this.canvas = document.getElementById(canvasId);
         this.ctx = this.canvas.getContext('2d');
         this.matchId = matchId;
@@ -27,6 +29,7 @@ class MatchViewer {
         this.isAirMap = isAirMap;
         this.pollInterval = pollInterval;
         this.onRender = onRender;
+        this.onPlayStateChange = onPlayStateChange;
         this.positions = [];
         this.positionCount = 0;
         this.pois = [];
@@ -56,6 +59,9 @@ class MatchViewer {
         this.blipSize = 1.5;
         this.timelinePosition = 1.0;
         this.maxTimestamp = 0;
+        this.trail = 0;
+        this.isPlaying = false;
+        this.playbackFrame = null;
         this._resize();
         this._loadMap();
         this._setupInteractions();
@@ -445,9 +451,9 @@ class MatchViewer {
         const deaths = [];
         for (const { category, points } of this.tracks) {
             if (!this.filters[category]) continue;
-            const end = window.Tracks.lastIndexAtMost(points, cutoff, point => point.t);
-            if (end < 0) continue;
-            if (end > 0) this._drawTrack(category, points, 0, end);
+            const [start, end] = this._visibleRange(points, cutoff);
+            if (start > end) continue;
+            if (end > start) this._drawTrack(category, points, start, end);
             const point = points[end];
             if (cutoff - point.t <= VIEW_STYLE.aliveWindow) {
                 current.push({ category, point });
@@ -556,6 +562,48 @@ class MatchViewer {
         this._render();
     }
 
+    setTrail(seconds) {
+        this.trail = seconds;
+        this._render();
+    }
+
+    _visibleRange(points, cutoff) {
+        const timeOf = point => point.t;
+        const end = window.Tracks.lastIndexAtMost(points, cutoff, timeOf);
+        if (this.trail === 0) return [0, end];
+        const earliest = cutoff - this.trail * 1000;
+        const index = window.Tracks.lastIndexAtMost(points, earliest, timeOf);
+        const start = index >= 0 && points[index].t === earliest ? index : index + 1;
+        return [start, end];
+    }
+
+    play() {
+        if (this.isLive || this.isPlaying || this.maxTimestamp === 0) return;
+        if (this.timelinePosition === 1) this.setTimeline(0);
+        this.isPlaying = true;
+        this.onPlayStateChange?.(true);
+        let lastTime;
+        const frame = now => {
+            if (lastTime !== undefined) this._advancePlayback(now - lastTime);
+            lastTime = now;
+            if (this.isPlaying) this.playbackFrame = requestAnimationFrame(frame);
+        };
+        this.playbackFrame = requestAnimationFrame(frame);
+    }
+
+    pause() {
+        if (!this.isPlaying) return;
+        this.isPlaying = false;
+        cancelAnimationFrame(this.playbackFrame);
+        this.playbackFrame = null;
+        this.onPlayStateChange?.(false);
+    }
+
+    _advancePlayback(dt) {
+        this.setTimeline(this.timelinePosition + dt * VIEW_STYLE.playbackSpeed / this.maxTimestamp);
+        if (this.timelinePosition === 1) this.pause();
+    }
+
     setTimeline(position) {
         this.timelinePosition = Math.max(0, Math.min(1, position));
         this._render();
@@ -574,6 +622,7 @@ class MatchViewer {
     }
 
     destroy() {
+        this.pause();
         this._stopPolling();
     }
 }

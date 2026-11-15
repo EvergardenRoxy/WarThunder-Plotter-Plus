@@ -64,6 +64,9 @@ if (document.getElementById('waiting-for-match')) {
 const mapCanvas = document.getElementById('mapCanvas');
 if (mapCanvas) {
     const timeline = document.getElementById('timeline-slider');
+    const currentTime = document.getElementById('timeline-current');
+    const maxTime = document.getElementById('timeline-max');
+    const playButton = document.getElementById('timeline-play');
     const viewer = new MatchViewer(mapCanvas.id, Number(mapCanvas.dataset.matchId), {
         isLive: mapCanvas.dataset.live === 'true',
         isAirMap: mapCanvas.dataset.battleType === 'air',
@@ -71,8 +74,12 @@ if (mapCanvas) {
         onRender(view) {
             if (!timeline) return;
             const max = view.getTimelineMax();
-            document.getElementById('timeline-current').textContent = view.formatTime(max * view.timelinePosition);
-            document.getElementById('timeline-max').textContent = view.formatTime(max);
+            timeline.value = view.timelinePosition * 100;
+            currentTime.textContent = view.formatTime(max * view.timelinePosition);
+            maxTime.textContent = view.formatTime(max);
+        },
+        onPlayStateChange(isPlaying) {
+            playButton.textContent = isPlaying ? t('viewer.pause') : t('viewer.play');
         }
     });
 
@@ -87,5 +94,19 @@ if (mapCanvas) {
         viewer.setBlipSize(Number(blipSize.value));
         document.getElementById('blip-size-value').textContent = blipSize.value;
     });
-    timeline?.addEventListener('input', () => viewer.setTimeline(Number(timeline.value) / 100));
+    const trail = document.getElementById('trail-length');
+    for (const seconds of VIEW_STYLE.trailOptions) {
+        const label = seconds ? t('viewer.trail_seconds', { n: seconds }) : t('viewer.trail_all');
+        trail.add(new Option(label, String(seconds)));
+    }
+    trail.addEventListener('change', () => viewer.setTrail(Number(trail.value)));
+
+    playButton?.addEventListener('click', () => {
+        if (viewer.isPlaying) viewer.pause();
+        else viewer.play();
+    });
+    timeline?.addEventListener('input', () => {
+        viewer.pause();
+        viewer.setTimeline(Number(timeline.value) / 100);
+    });
 }

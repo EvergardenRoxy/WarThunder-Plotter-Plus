@@ -476,13 +476,18 @@ a:hover {
   color: #ccc;
 }
 
-.language-select {
+.language-select,
+.trail-length {
     background: #1a1a1a;
     color: #e0e0e0;
     border: 1px solid #333;
     border-radius: 4px;
     padding: 0.35rem 0.5rem;
     font: inherit;
+}
+
+.trail-length {
+    width: 100%;
 }
 
 .capture-stopped {

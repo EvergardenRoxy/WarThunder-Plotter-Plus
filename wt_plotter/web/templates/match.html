@@ -46,14 +46,19 @@
             </div>
             <p class="hint">{{ t('viewer.zoom_hint') }}</p>
         </div>
+        <div class="panel">
+            <h3><label for="trail-length">{{ t('viewer.trail') }}</label></h3>
+            <select id="trail-length" class="trail-length"></select>
+        </div>
         {% if not is_live %}
         <div class="panel">
             <h3>{{ t('viewer.timeline') }}</h3>
             <div class="timeline-controls">
-                <input type="range" id="timeline-slider" min="0" max="100" value="100" class="timeline-slider" aria-label="{{ t('viewer.timeline') }}">
+                <input type="range" id="timeline-slider" min="0" max="100" step="any" value="100" class="timeline-slider" aria-label="{{ t('viewer.timeline') }}">
                 <div class="timeline-display">
                     <span id="timeline-current">--:--</span> / <span id="timeline-max">--:--</span>
                 </div>
+                <button type="button" id="timeline-play" class="btn btn-secondary">{{ t('viewer.play') }}</button>
             </div>
             <p class="hint">{{ t('viewer.timeline_hint') }}</p>
         </div>

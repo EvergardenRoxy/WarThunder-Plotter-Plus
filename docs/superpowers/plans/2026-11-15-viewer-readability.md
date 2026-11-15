@@ -1,6 +1,6 @@
 # 地图可读性与空中视角修复 Implementation Plan
 
-> **For agentic workers:** 按 `docs/superpowers/plans/executor-prompt.md` 的规则逐个 Task 执行。每次会话只做一个 Task。步骤用 `- [ ]` 勾选跟踪。
+> **For agentic workers:** 依次执行各 Task，沿用 `docs/superpowers/plans/executor-prompt.md` 的测试和提交规则。本计划可在同一会话中连续推进，步骤用 `- [ ]` 勾选跟踪。
 
 **Goal:** 修复“坐飞机即判为空中视角”造成的坐标错算；把比赛地图从“整场散点”改成可辨认的轨迹图。
 
@@ -260,13 +260,13 @@ window.Tracks = { linkTracks, clusterPoints, lastIndexAtMost };
 **Interfaces:**
 - Produces：`viewer.setTrail(seconds)`；`viewer.play()`、`viewer.pause()`、`viewer.isPlaying`。另提供构造参数 `onPlayStateChange(isPlaying)`，供 `app.js` 切换按钮文字。
 
-- [ ] **Step 1:** 写失败测试，追加到 `viewer.test.cjs`：
+- [x] **Step 1:** 写失败测试，追加到 `viewer.test.cjs`：
   - 轨迹长度窗口：一条轨迹的点 `t` 为 0、1000、…、10000，`cutoff` 为 10000，`setTrail(3)` → 绘制范围的下标为 7～10。为此把计算起止下标的逻辑提取成 `_visibleRange(points, cutoff)`，返回 `[start, end]`，测试直接调用它。
   - `_advancePlayback(dt)`：`maxTimestamp = 10000`、`timelinePosition = 0.5`、`dt = 100` → `timelinePosition === 0.6`；从 0.95 开始、`dt = 100` → 结果为 1，且 `isPlaying === false`。
-- [ ] **Step 2:** 跑测试，确认失败。
-- [ ] **Step 3:** 按设计 D4 实现：`viewer.js` 中的 `setTrail`、`_visibleRange`、`play`、`pause`、`_advancePlayback`；`match.html` 中的轨迹长度面板（实时和回放都有）和播放按钮（只有回放有）；`app.js` 的事件绑定，拖动滑块时调用 `pause()`；两个语言文件各加 5 个键。
-- [ ] **Step 4:** 跑全量测试至全绿。`test_static_keys.py` 会检查新键是否存在，以及模板中是否没有写死文字。
-- [ ] **Step 5:** 提交：`feat: add trail length and timeline playback`。
+- [x] **Step 2:** 跑测试，确认失败。
+- [x] **Step 3:** 按设计 D4 实现：`viewer.js` 中的 `setTrail`、`_visibleRange`、`play`、`pause`、`_advancePlayback`；`match.html` 中的轨迹长度面板（实时和回放都有）和播放按钮（只有回放有）；`app.js` 的事件绑定，拖动滑块时调用 `pause()`；两个语言文件各加 5 个键。
+- [x] **Step 4:** 跑全量测试至全绿。`test_static_keys.py` 会检查新键是否存在，以及模板中是否没有写死文字。
+- [x] **Step 5:** 提交：`feat: add trail length and timeline playback`。
 
 ### Task 5: 发布
 
