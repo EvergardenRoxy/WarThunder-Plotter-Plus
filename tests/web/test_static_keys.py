@@ -36,3 +36,12 @@ def test_no_spread_over_position_arrays():
     # 整场位置可达几十万条，展开成函数参数会超出引擎上限。
     for path in (WEB / "static").glob("*.js"):
         assert re.search(r"Math\.(max|min)\(\s*\.\.\.", path.read_text(encoding="utf-8")) is None, path.name
+
+
+def test_unit_shapes_have_names():
+    # 悬停提示按 unit.<icon> 动态取译名。
+    source = (WEB / "static" / "viewer.js").read_text(encoding="utf-8")
+    block = re.search(r"unitShapes: \{(.*?)\n    \},", source, re.DOTALL).group(1)
+    icons = set(re.findall(r"^\s*(\w+): \{", block, re.MULTILINE)) | {"Player"}
+    for lang in ("en", "zh"):
+        assert {f"unit.{icon}" for icon in icons} <= load_catalog(lang).keys(), lang

@@ -29,6 +29,19 @@
     </details>
 </div>
 {% endblock %}
+{# 图例形状，与 shapes.js 的几何一致。 #}
+{% macro legend_shape(shape) -%}
+<svg class="legend-shape" viewBox="-8 -8 16 16" aria-hidden="true">
+    {% if shape == 'circle' %}<circle r="6"/>
+    {% elif shape == 'square' %}<rect x="-5.5" y="-5.5" width="11" height="11"/>
+    {% elif shape == 'diamond' %}<polygon points="0,-6 6,0 0,6 -6,0"/>
+    {% elif shape == 'triangle' %}<polygon points="0,-6 6,6 -6,6"/>
+    {% elif shape == 'pentagon' %}<polygon points="0,-6 5.7,-1.9 3.5,4.9 -3.5,4.9 -5.7,-1.9"/>
+    {% elif shape == 'circle-cross' %}<circle r="6"/><path d="M-6 0H6M0 -6V6"/>
+    {% else %}<polygon points="0,-6 4.8,6 0,2.4 -4.8,6"/>
+    {% endif %}
+</svg>
+{%- endmacro %}
 {% block content %}
 <div class="viewer">
     <section class="map-column">
@@ -36,6 +49,7 @@
         <p class="capture-stopped" id="capture-stopped" role="status" hidden>{{ t('viewer.capture_stopped') }}</p>
         {% endif %}
         <div class="canvas-wrapper">
+            <div id="unit-tooltip" class="unit-tooltip" hidden></div>
             <canvas id="mapCanvas" data-match-id="{{ match.id }}" data-live="{{ 'true' if is_live else 'false' }}" data-battle-type="{{ match.battle_type }}" data-has-air-map="{{ 'true' if match.air_map else 'false' }}" data-default-map="{{ default_map }}" title="{{ t('viewer.zoom_hint') }}"></canvas>
         </div>
         {% if not is_live %}
@@ -104,6 +118,15 @@
                 </label>
                 {% endfor %}
             </div>
+            <div class="unit-legend" id="unit-legend">
+                {% for key, shape in [
+                    ('unit.LightTank', 'diamond'), ('unit.MediumTank', 'circle'), ('unit.HeavyTank', 'square'),
+                    ('unit.TankDestroyer', 'triangle'), ('unit.SPAA', 'circle-cross'), ('unit.Wheeled', 'pentagon'),
+                    ('unit.Fighter', 'arrow'), ('unit.Assault', 'arrow'), ('unit.Bomber', 'arrow'),
+                ] %}
+                <span class="legend-item">{{ legend_shape(shape) }}{{ t(key) }}</span>
+                {% endfor %}
+            </div>
         </div>
         <div class="panel feed-panel">
             <h3>{{ t('viewer.feed') }}</h3>
@@ -114,6 +137,7 @@
 {% endblock %}
 {% block scripts %}
 <script src="{{ url_for('static', filename='settings.js') }}"></script>
+<script src="{{ url_for('static', filename='shapes.js') }}"></script>
 <script src="{{ url_for('static', filename='tracks.js') }}"></script>
 <script src="{{ url_for('static', filename='viewer.js') }}"></script>
 {% endblock %}

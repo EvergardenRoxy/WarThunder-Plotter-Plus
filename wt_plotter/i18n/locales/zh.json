@@ -306,5 +306,16 @@
   "viewer.map_kind": "底图",
   "viewer.map_ground": "地面图",
   "viewer.map_air": "空战图",
-  "viewer.air_view_raw": "✈️ 空中视角"
+  "viewer.air_view_raw": "✈️ 空中视角",
+  "unit.LightTank": "轻型坦克",
+  "unit.MediumTank": "中型坦克",
+  "unit.HeavyTank": "重型坦克",
+  "unit.TankDestroyer": "坦克歼击车",
+  "unit.SPAA": "防空车",
+  "unit.SAM": "防空导弹",
+  "unit.Wheeled": "轮式车",
+  "unit.Fighter": "战斗机",
+  "unit.Assault": "攻击机",
+  "unit.Bomber": "轰炸机",
+  "unit.Player": "自己"
 }

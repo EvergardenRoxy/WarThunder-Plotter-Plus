@@ -42,7 +42,7 @@ test('normalizes POI colors to the nearest owner', () => {
 test('discards out-of-range display coordinates while advancing the cursor', async () => {
     const context = load('tracks.js', 'viewer.js');
     const viewer = makeViewer(context);
-    const position = { tick_id: 1, x: 0.5, y: 0.5, type: 'ground_model', color: '#174DFF' };
+    const position = { tick_id: 1, x: 0.5, y: 0.5, type: 'ground_model', icon: 'MediumTank', color: '#174DFF' };
     context.fetch = async () => ({
         json: async () => ({
             ticks: [{ id: 1, timestamp: 1000 }, { id: 2, timestamp: 1500 }],
@@ -213,4 +213,38 @@ test('ground map prefers ground coordinates and drops unmapped air-view points',
     assert.equal(viewer.tracks.length, 1);
     assert.deepEqual([viewer.tracks[0].points[0].x, viewer.tracks[0].points[0].y], [0.6, 0.7]);
     assert.equal(viewer.isAirMap, false);
+});
+
+test('drops unit icons that are not displayed', async () => {
+    const context = load('tracks.js', 'viewer.js');
+    const viewer = makeViewer(context);
+    const base = { tick_id: 1, x: 0.5, y: 0.5, type: 'ground_model', color: '#174DFF', is_poi: 0 };
+    context.fetch = async () => ({
+        json: async () => ({
+            ticks: [{ id: 1, timestamp: 1000 }],
+            positions: ['Artillery', 'Pillbox', 'Airdefence', 'Mystery', 'MediumTank', 'Player']
+                .map(icon => ({ ...base, icon }))
+                .concat({ ...base, type: 'respawn_base_tank', icon: 'respawn_base_tank', is_poi: 1 }),
+        }),
+    });
+    await viewer._loadPositions();
+    assert.deepEqual(viewer.positions.map(pos => pos.icon), ['MediumTank', 'Player']);
+    assert.equal(viewer.pois.length, 1);
+    assert.equal(viewer.positionCount, 6);
+});
+
+test('tracks keep the unit icon', () => {
+    const viewer = makeViewer(load('tracks.js', 'viewer.js'), {
+        positions: [{ type: 'ground_model', icon: 'HeavyTank', color: '#174DFF', x: 0.5, y: 0.5, timestamp: 0 }],
+    });
+    viewer._buildTracks();
+    assert.equal(viewer.tracks[0].points.at(-1).icon, 'HeavyTank');
+});
+
+test('finds the marker under the pointer', () => {
+    const viewer = makeViewer(load('tracks.js', 'viewer.js'), {
+        markers: [{ sx: 100, sy: 100, r: 4, icon: 'MediumTank' }],
+    });
+    assert.equal(viewer._markerAt(103, 100).icon, 'MediumTank');
+    assert.equal(viewer._markerAt(140, 100), null);
 });

@@ -12,8 +12,24 @@ const VIEW_STYLE = Object.freeze({
     lineAlpha: { player: 1, squad: 1, enemy: 1, ally: 0.6, other: 0.6 },
     haloWidth: 2,
     haloColor: 'rgba(0,0,0,0.55)',
-    current: { radius: 3, border: 1.5, playerScale: 1.4, playerRing: 2 },
-    deathSize: 2.5,
+    // 当前位置标记：屏幕尺寸 = blipSize × markerBase × scale。
+    markerBase: 14,
+    current: { border: 1.5, playerScale: 1.4, playerRing: 2 },
+    playerIcon: 'Player',
+    unitShapes: {
+        LightTank: { shape: 'diamond', scale: 1 },
+        MediumTank: { shape: 'circle', scale: 1 },
+        HeavyTank: { shape: 'square', scale: 0.9 },
+        TankDestroyer: { shape: 'triangle', scale: 1 },
+        SPAA: { shape: 'circle-cross', scale: 1 },
+        SAM: { shape: 'circle-cross', scale: 1 },
+        Wheeled: { shape: 'pentagon', scale: 1 },
+        Fighter: { shape: 'arrow', scale: 1 },
+        Assault: { shape: 'arrow', scale: 1.15 },
+        Bomber: { shape: 'arrow', scale: 1.3 },
+    },
+    hoverSlop: 4,
+    deathScale: 0.8,
     capture: { radius: 12, alpha: 0.3, border: 2 },
     respawn: { size: 8, alpha: 0.5, border: 1.5 },
     trailOptions: [10, 30, 60, 120, 0],
@@ -42,6 +58,7 @@ class MatchViewer {
         this.positionCount = 0;
         this.pois = [];
         this.tracks = [];
+        this.markers = [];
         this.visiblePois = [];
         this.mapImage = null;
         this.lastTimestamp = 0;
@@ -124,6 +141,9 @@ class MatchViewer {
             }
         });
 
+        this.canvas.addEventListener('mousemove', (e) => this._showTooltip(e));
+        this.canvas.addEventListener('mouseleave', () => { document.getElementById('unit-tooltip').hidden = true; });
+
         window.addEventListener('mousemove', (e) => {
             if (this.isPanning) {
                 const dx = e.clientX - this.lastMouseX;
@@ -147,6 +167,18 @@ class MatchViewer {
         this.canvas.addEventListener('dblclick', () => {
             this.resetView();
         });
+    }
+
+    _showTooltip(e) {
+        const tooltip = document.getElementById('unit-tooltip');
+        const rect = this.canvas.getBoundingClientRect();
+        const hit = this.isPanning ? null : this._markerAt(e.clientX - rect.left, e.clientY - rect.top);
+        tooltip.hidden = !hit;
+        if (!hit) return;
+        tooltip.textContent = t(`unit.${hit.icon}`);
+        const wrapper = this.canvas.parentElement.getBoundingClientRect();
+        tooltip.style.left = `${e.clientX - wrapper.left + 12}px`;
+        tooltip.style.top = `${e.clientY - wrapper.top + 12}px`;
     }
 
     _clampPan() {
@@ -247,6 +279,8 @@ class MatchViewer {
                     this.maxTimestamp = Math.max(this.maxTimestamp, tick.timestamp);
                     this.lastTimestamp = Math.max(this.lastTimestamp, tick.timestamp + 1);
                     if (!pos.is_poi) this.positionCount++;
+                    // 不显示的单位（火炮、碉堡、舰船等）直接丢弃。
+                    if (!pos.is_poi && !this._isShownUnit(pos)) continue;
 
                     const merged = {
                         ...pos,
@@ -375,6 +409,10 @@ class MatchViewer {
         return best;
     }
 
+    _isShownUnit(pos) {
+        return pos.icon === VIEW_STYLE.playerIcon || pos.icon in VIEW_STYLE.unitShapes;
+    }
+
     _isDrawable(pos) {
         // 空战图只画空中视角的原始坐标；纯空战图全部可画。
         if (this.mapKind === 'air') return Boolean(pos.is_player_air_view);
@@ -399,7 +437,7 @@ class MatchViewer {
             if (!grouped.has(category)) grouped.set(category, new Map());
             const times = grouped.get(category);
             if (!times.has(pos.timestamp)) times.set(pos.timestamp, []);
-            times.get(pos.timestamp).push(point);
+            times.get(pos.timestamp).push({ ...point, icon: pos.icon });
         }
         this.visiblePois = [];
         for (const pos of this.pois) {
@@ -489,13 +527,14 @@ class MatchViewer {
             if (end > start) this._drawTrack(category, points, start, end, cutoff - this.trail * 1000);
             const point = points[end];
             if (cutoff - point.t <= VIEW_STYLE.aliveWindow) {
-                current.push({ category, point });
+                current.push({ category, point, previous: points[end - 1] });
             } else if (end === points.length - 1 && points.length >= VIEW_STYLE.deathMinPoints &&
                 point.t < this.maxTimestamp - VIEW_STYLE.aliveWindow) {
                 deaths.push({ category, point });
             }
         }
-        for (const { category, point } of current) this._drawCurrent(category, point);
+        this.markers = [];
+        for (const { category, point, previous } of current) this._drawCurrent(category, point, previous);
         for (const { category, point } of deaths) this._drawDeath(category, point);
 
         ctx.restore();
@@ -571,33 +610,54 @@ class MatchViewer {
         ctx.stroke();
     }
 
-    _drawCurrent(category, point) {
+    _drawCurrent(category, point, previous) {
         const ctx = this.ctx;
         const style = VIEW_STYLE.current;
         const x = point.x * this.width;
         const y = point.y * this.height;
-        const radius = this.blipSize * style.radius * (category === 'player' ? style.playerScale : 1) / this.zoom;
-        ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        const isPlayer = point.icon === VIEW_STYLE.playerIcon;
+        const unit = VIEW_STYLE.unitShapes[point.icon];
+        const scale = isPlayer ? style.playerScale : unit.scale;
+        const size = this.blipSize * VIEW_STYLE.markerBase * scale / this.zoom;
+        // 箭头沿最后一段轨迹的方向，只有一个点时朝上。
+        const angle = previous ? Math.atan2(point.y - previous.y, point.x - previous.x) : -Math.PI / 2;
+        window.Shapes.path(ctx, isPlayer ? 'circle' : unit.shape, x, y, size, angle);
         ctx.fillStyle = VIEW_STYLE.teamColors[category];
         ctx.fill();
         ctx.strokeStyle = '#000';
         ctx.lineWidth = style.border / this.zoom;
         ctx.stroke();
-        if (category === 'player') {
+        if (isPlayer) {
             ctx.beginPath();
-            ctx.arc(x, y, radius + (style.border + style.playerRing) / 2 / this.zoom, 0, Math.PI * 2);
+            ctx.arc(x, y, size / 2 + (style.border + style.playerRing) / 2 / this.zoom, 0, Math.PI * 2);
             ctx.strokeStyle = '#fff';
             ctx.lineWidth = style.playerRing / this.zoom;
             ctx.stroke();
         }
+        this.markers.push({
+            sx: x * this.zoom + this.panX, sy: y * this.zoom + this.panY, r: size * this.zoom / 2, icon: point.icon,
+        });
+    }
+
+    // 返回屏幕坐标下最近的当前位置标记。
+    _markerAt(sx, sy) {
+        let best = null;
+        let bestDistance = Infinity;
+        for (const marker of this.markers) {
+            const distance = Math.hypot(marker.sx - sx, marker.sy - sy);
+            if (distance <= marker.r + VIEW_STYLE.hoverSlop && distance < bestDistance) {
+                best = marker;
+                bestDistance = distance;
+            }
+        }
+        return best;
     }
 
     _drawDeath(category, point) {
         const ctx = this.ctx;
         const x = point.x * this.width;
         const y = point.y * this.height;
-        const half = this.blipSize * VIEW_STYLE.deathSize / 2 / this.zoom;
+        const half = this.blipSize * VIEW_STYLE.markerBase * VIEW_STYLE.deathScale / 2 / this.zoom;
         ctx.beginPath();
         ctx.moveTo(x - half, y - half);
         ctx.lineTo(x + half, y + half);

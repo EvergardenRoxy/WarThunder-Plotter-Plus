@@ -306,5 +306,16 @@
   "viewer.map_kind": "Base map",
   "viewer.map_ground": "Ground",
   "viewer.map_air": "Air",
-  "viewer.air_view_raw": "✈️ Air View"
+  "viewer.air_view_raw": "✈️ Air View",
+  "unit.LightTank": "Light tank",
+  "unit.MediumTank": "Medium tank",
+  "unit.HeavyTank": "Heavy tank",
+  "unit.TankDestroyer": "Tank destroyer",
+  "unit.SPAA": "SPAA",
+  "unit.SAM": "SAM",
+  "unit.Wheeled": "Wheeled",
+  "unit.Fighter": "Fighter",
+  "unit.Assault": "Attacker",
+  "unit.Bomber": "Bomber",
+  "unit.Player": "You"
 }
