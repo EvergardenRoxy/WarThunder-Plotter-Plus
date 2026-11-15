@@ -127,3 +127,12 @@ def test_shutdown_calls_hook(app, client):
     assert response.status_code == 200
     assert response.json == {"success": True}
     assert hook.wait(1)
+
+
+def test_status_without_capturer_reads_latest_tick(client, conn, match_id):
+    db.add_tick(
+        conn, match_id, db.TickRecord(1.0, "air", "test_plane", 1, 1),
+        [db.PositionRecord(0.3, 0.4, "#fff", "aircraft", "Player", 0)],
+    )
+    status = client.get("/api/status").json
+    assert (status["army_type"], status["vehicle_type"]) == ("air", "test_plane")

@@ -154,8 +154,9 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
     def api_status():
         conn = connection()
         active = db.get_active_match(conn)
-        army = capturer.army_type if capturer else CAPTURE_DEFAULTS.army_type
-        vehicle = capturer.vehicle_type if capturer else CAPTURE_DEFAULTS.vehicle_type
+        # 有本地采集器就读它；没有（serve 模式）就读当前比赛的最新 tick。
+        army = capturer.army_type if capturer else None
+        vehicle = capturer.vehicle_type if capturer else None
         if active and (not army or not vehicle):
             tick = db.get_latest_tick(conn, active.id)
             if tick:
