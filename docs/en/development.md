@@ -16,3 +16,5 @@ The build writes `dist/WarThunderPlotterPlus-portable.exe`. To smoke-test it wit
 Use `reference/upstream/` as read-only reference material. With an upstream checkout present, `.venv\Scripts\python scripts/port_map_table.py` regenerates the map hash table and English name fixture. After regenerating, update both catalogs if any map IDs or names changed.
 
 Unit tests construct telemetry and temporary SQLite databases. The optional upstream replay test uses `reference/upstream/data/raw/match_*.json` and its matching `reference/upstream/data/matches.db`. The replay compares tick and position counts and stored coordinate transforms. The CLI integration tests require loopback HTTP access.
+
+JavaScript tests require Node.js 18 or later and run through `tests/web/test_js.py`.

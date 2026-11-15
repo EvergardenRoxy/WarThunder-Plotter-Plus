@@ -33,6 +33,8 @@
 - 2026-11-15 · Task 10 · 设计 §2 提到新增语言只需一份 JSON，§7.2 明确将 `LANGUAGES` 固定为 `("en", "zh")`。本期按 §7.2 实现，双语开发文档写明了扩展语言还需注册代码、增加选项标签并重新打包。
 - 2026-11-15 · Task 10 · 收尾要求工作区干净，执行规则要求在 Task 提交后写入该提交的哈希。最后一条完成记录单独提交，保留可核对的 Task 提交哈希。
 
+- 2026-11-15 · 2026-11-15-viewer-readability.md · Task 2 Step 1 · Windows 上 Node v24.22.1 将显式传入的 tests/js/ 当成模块入口，报 Cannot find module。pytest 改为枚举 tests/js/*.test.cjs 并逐个传给 node --test，继续在缺少 Node 时直接报错。
+
 ## 阻塞
 
 ## 待人工复核

@@ -142,8 +142,8 @@
 - Produces：`window.Tracks = { linkTracks, clusterPoints, lastIndexAtMost }`（语义见设计 D2）
 - Produces：`tests/js/load.cjs` 导出 `load(...files)`。它在 `node:vm` 中建立上下文，至少提供 `window`、`console`、`document` 桩，按顺序执行 `wt_plotter/web/static/` 下的指定文件，返回上下文对象。写法参考 `docs/reviews/2026-11-15/reproduce.cjs`。
 
-- [ ] **Step 1:** 写 `tests/web/test_js.py`：`test_node_tests_pass` 用 `subprocess.run(["node", "--test", "tests/js/"], cwd=项目根目录)` 运行 JS 测试，断言返回码为 0，失败时把 stdout 和 stderr 作为断言信息输出。找不到 `node` 时直接报错，不要 skip。
-- [ ] **Step 2:** 写失败测试 `tests/js/tracks.test.cjs`：
+- [x] **Step 1:** 写 `tests/web/test_js.py`：`test_node_tests_pass` 用 `subprocess.run(["node", "--test", "tests/js/"], cwd=项目根目录)` 运行 JS 测试，断言返回码为 0，失败时把 stdout 和 stderr 作为断言信息输出。找不到 `node` 时直接报错，不要 skip。
+- [x] **Step 2:** 写失败测试 `tests/js/tracks.test.cjs`：
   - 两个点同向平行移动 10 帧，间距 0.1、步长 0.005，`maxStep` 为 0.03 → 得到 2 条轨迹，每条 10 个点，且各自的 x 坐标保持不变。
   - 单个点在第 5 帧跳了 0.2 → 得到 2 条轨迹，点数分别为 5 和 5。
   - 单个点相邻两帧间隔 4000ms，`maxGap` 为 3000 → 得到 2 条轨迹。
@@ -151,7 +151,7 @@
   - 返回的每个点都带上了所在帧的 `t`，并保留原点上的其他字段。
   - `clusterPoints`：点 (0.1, 0.1)、(0.105, 0.1)、(0.5, 0.5)，半径 0.02，`pick` 取每组第一个 → 得到 2 个点。
   - `lastIndexAtMost`：在 `[1, 3, 5]` 中查找 0、3、4、9，结果依次为 -1、1、1、2。
-- [ ] **Step 3:** 写 `tracks.js`，内容如下：
+- [x] **Step 3:** 写 `tracks.js`，内容如下：
 
 ```js
 // 把逐帧的无编号点串成轨迹：相邻帧之间按最近距离贪心配对。
@@ -221,9 +221,9 @@ function lastIndexAtMost(items, value, key) {
 window.Tracks = { linkTracks, clusterPoints, lastIndexAtMost };
 ```
 
-- [ ] **Step 4:** 跑全量测试至全绿。若交错用例失败，先确认失败的根因是贪心配对本身，再调整算法，不要改用例。
-- [ ] **Step 5:** 在中英文开发文档的测试一节各补一句：JS 测试需要 Node.js 18 或更高版本，由 `tests/web/test_js.py` 调用。
-- [ ] **Step 6:** 提交：`test: add track utilities with node tests`。
+- [x] **Step 4:** 跑全量测试至全绿。若交错用例失败，先确认失败的根因是贪心配对本身，再调整算法，不要改用例。
+- [x] **Step 5:** 在中英文开发文档的测试一节各补一句：JS 测试需要 Node.js 18 或更高版本，由 `tests/web/test_js.py` 调用。
+- [x] **Step 6:** 提交：`test: add track utilities with node tests`。
 
 ### Task 3: 查看器绘制重写
 

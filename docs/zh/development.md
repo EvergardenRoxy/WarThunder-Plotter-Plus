@@ -16,3 +16,5 @@
 `reference/upstream/` 用作只读参考。已有上游源码时，执行 `.venv\Scripts\python scripts/port_map_table.py` 可重新生成地图表和英文名测试数据。若地图 ID 或名称变化，同时更新两份语言文件。
 
 单元测试使用手写遥测与临时 SQLite 数据库。真实回放测试读取 `reference/upstream/data/raw/match_*.json` 与配套的 `reference/upstream/data/matches.db`，比较 tick 数、位置数和坐标换算参数。命令行集成测试需要访问本机环回 HTTP。
+
+JavaScript 测试需要 Node.js 18 或更高版本，由 `tests/web/test_js.py` 调用。
