@@ -9,6 +9,7 @@ from wt_plotter.capture.capturer import Capturer
 from wt_plotter.config import APP_SETTINGS, CAPTURE_DEFAULTS
 from wt_plotter.i18n import LANGUAGES, get_language, language_names, load_catalog, set_language, translate
 from wt_plotter.maps.lookup import lookup_map
+from wt_plotter.maps.table import BattleType
 from wt_plotter.storage import db
 
 
@@ -56,12 +57,21 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
         info = lookup_map(dhash or "")
         return {"map_id": info.map_id, "battle_type": info.battle_type.value, "map_name": t(f"map.{info.map_id}")}
 
+    def is_air_battle(match):
+        # 混合地图开局时 8111 先给地面图；有空战图且第一次出击是飞机，就是空战。
+        if not match.air_map_hash:
+            return False
+        army = db.first_sortie_army(connection(), match.id, CAPTURE_DEFAULTS.placeholder_vehicles)
+        return army == CAPTURE_DEFAULTS.air_army_type
+
     def match_summary(match):
+        info = map_metadata(match.map_hash)
         return {
             "id": match.id, "started_at": match.started_at, "ended_at": match.ended_at,
             "nuke_detected": match.nuke_detected, "initial_capture_count": match.initial_capture_count,
             "initial_capture_x": match.initial_capture_x, "initial_capture_y": match.initial_capture_y,
-            **map_metadata(match.map_hash),
+            **info,
+            "mode": BattleType.AIR.value if is_air_battle(match) else info["battle_type"],
         }
 
     def match_page_data(match):
@@ -69,17 +79,11 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
         payload["air_map"] = map_metadata(match.air_map_hash) if match.air_map_hash else None
         return payload
 
-    def default_map(match):
-        # 有空战图且第一次出击是飞机时默认显示空战图。
-        if not match.air_map_hash:
-            return "ground"
-        army = db.first_sortie_army(connection(), match.id, CAPTURE_DEFAULTS.placeholder_vehicles)
-        return "air" if army == CAPTURE_DEFAULTS.air_army_type else "ground"
-
     def render_match(match, is_live):
-        return render_template(
-            "match.html", match=match_page_data(match), is_live=is_live, default_map=default_map(match),
-        )
+        payload = match_page_data(match)
+        # 空战局默认显示空战图。
+        default_map = "air" if payload["mode"] == BattleType.AIR.value and match.air_map_hash else "ground"
+        return render_template("match.html", match=payload, is_live=is_live, default_map=default_map)
 
     @app.get("/")
     def index():

@@ -2,6 +2,10 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.4.1
+
+- Air battles on combined maps, where the game first reports the ground map, are now identified by the first sortie and shown as air battles in the match list and page header. Checked against the match replay.
+
 ## 0.4.0
 
 - The match page now fits on one screen: the map fills the available height, the playback bar sits under it, match details move into the header, and header items are vertically centered.

@@ -6,7 +6,7 @@
 <div class="match-title">
     <strong>{{ heading }}</strong>
     {% if is_live %}<span id="live-badge" class="badge live">{{ t('match.live') }}</span>{% endif %}
-    <span class="match-sub">{{ (icons[match.battle_type] ~ ' ' ~ match.map_name) | trim }}</span>
+    <span class="match-sub">{{ (icons[match.mode] ~ ' ' ~ match.map_name) | trim }}</span>
     <span class="match-sub">{{ match.started_at | dt }}</span>
     <details class="match-details">
         <summary title="{{ t('viewer.details') }}" aria-label="{{ t('viewer.details') }}">ⓘ</summary>

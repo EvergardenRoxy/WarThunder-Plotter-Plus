@@ -8,7 +8,7 @@
         <a href="{{ url_for('match_view', match_id=match.id) }}" class="match-item{% if not match.ended_at %} active{% endif %}">
             <div class="match-info">
                 <span class="match-time">{{ match.started_at | dt }} ({{ '%d:%02d' | format(match.duration_seconds // 60, match.duration_seconds % 60) }})</span>
-                <span class="match-map">{{ icons[match.battle_type] }} {{ match.map_name }}</span>
+                <span class="match-map">{{ icons[match.mode] }} {{ match.map_name }}</span>
                 {% if match.air_map %}
                 <span class="match-stats">{{ t('match.air_map', name=(icons[match.air_map.battle_type] ~ ' ' ~ match.air_map.map_name) | trim) }}</span>
                 {% endif %}

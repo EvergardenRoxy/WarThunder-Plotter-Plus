@@ -181,3 +181,20 @@ def test_events_since(client, conn, match_id):
     response = client.get(f"/api/match/{match_id}/events", query_string={"since": 2000})
     assert response.status_code == 200
     assert response.json == [{"timestamp": 3000, "msg": "second"}]
+
+
+@pytest.mark.parametrize("army, vehicle, mode", [("air", "f-4s", "air"), ("tank", "germ_hummel", "ground")])
+def test_mode_follows_first_sortie(client, conn, match_id, army, vehicle, mode):
+    # 混合地图上第一次出击就是飞机的比赛是空战，列表按空战显示。
+    _sortie(conn, match_id, army, vehicle)
+    db.set_air_map(conn, match_id, AIR_MAP_HASH)
+    [summary] = client.get("/api/matches").json
+    assert summary["mode"] == mode
+    icon = "✈️" if mode == "air" else "🚜"
+    assert f'<span class="match-map">{icon} ' in client.get("/").text
+    assert f'<span class="match-sub">{icon} ' in client.get(f"/match/{match_id}").text
+
+
+def test_mode_without_air_map_is_map_type(client, conn, match_id):
+    _sortie(conn, match_id, "air", "f-4s")
+    assert client.get("/api/matches").json[0]["mode"] == "ground"
