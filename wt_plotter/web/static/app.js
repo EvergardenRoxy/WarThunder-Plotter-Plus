@@ -66,6 +66,7 @@ if (mapCanvas) {
     const timeline = document.getElementById('timeline-slider');
     const viewer = new MatchViewer(mapCanvas.id, Number(mapCanvas.dataset.matchId), {
         isLive: mapCanvas.dataset.live === 'true',
+        isAirMap: mapCanvas.dataset.battleType === 'air',
         pollInterval: 500,
         onRender(view) {
             if (!timeline) return;

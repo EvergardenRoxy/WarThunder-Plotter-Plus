@@ -29,7 +29,7 @@
 {% endif %}
 <div class="viewer-container">
     <div class="canvas-wrapper">
-        <canvas id="mapCanvas" data-match-id="{{ match.id }}" data-live="{{ 'true' if is_live else 'false' }}"></canvas>
+        <canvas id="mapCanvas" data-match-id="{{ match.id }}" data-live="{{ 'true' if is_live else 'false' }}" data-battle-type="{{ match.battle_type }}"></canvas>
     </div>
     <div class="sidebar">
         <div class="panel">

@@ -1,10 +1,11 @@
 
 class MatchViewer {
-    constructor(canvasId, matchId, { isLive = false, pollInterval = 500, onRender } = {}) {
+    constructor(canvasId, matchId, { isLive = false, isAirMap = false, pollInterval = 500, onRender } = {}) {
         this.canvas = document.getElementById(canvasId);
         this.ctx = this.canvas.getContext('2d');
         this.matchId = matchId;
         this.isLive = isLive;
+        this.isAirMap = isAirMap;
         this.pollInterval = pollInterval;
         this.onRender = onRender;
         this.positions = [];
@@ -35,10 +36,11 @@ class MatchViewer {
         this.timelinePosition = 1.0;
         this.maxTimestamp = 0;
         this._loadMap();
-        this._loadPositions();
         this._setupInteractions();
         if (this.isLive) {
             this._startPolling();
+        } else {
+            this._loadPositions();
         }
         window.addEventListener('resize', () => this._resize());
         requestAnimationFrame(() => {
@@ -240,18 +242,23 @@ class MatchViewer {
     }
 
     _startPolling() {
-        this._checkMatchStatus();
-        this.pollTimer = setInterval(() => {
-            this._checkMatchStatus();
-            if (this.isLive) this._loadPositions();
-        }, this.pollInterval);
+        this.polling = true;
+        this._poll();
+    }
+
+    // 串行轮询：上一轮请求结束后才安排下一轮，同一时刻只有一个位置请求。
+    async _poll() {
+        if (this.isLive) await this._loadPositions();
+        await this._checkMatchStatus();
+        if (this.polling) {
+            this.pollTimer = setTimeout(() => this._poll(), this.pollInterval);
+        }
     }
 
     _stopPolling() {
-        if (this.pollTimer) {
-            clearInterval(this.pollTimer);
-            this.pollTimer = null;
-        }
+        this.polling = false;
+        clearTimeout(this.pollTimer);
+        this.pollTimer = null;
     }
 
     async _checkMatchStatus() {
@@ -263,7 +270,9 @@ class MatchViewer {
                 const active = await activeResp.json();
                 if (active && active.id && active.id !== this.matchId) {
                     window.location.href = '/live';
-                } else {
+                } else if (this.isLive) {
+                    // 结束前写入的最后一批位置可能还没取到，补取一次。
+                    await this._loadPositions();
                     this.isLive = false;
                     this._showMatchEnded();
                 }
@@ -386,11 +395,15 @@ class MatchViewer {
     }
 
     _shouldShow(pos) {
-        const isAirType = (pos.type || '').toLowerCase() === 'aircraft';
-        if (isAirType) return false;
-        const isAirView = pos.is_player_air_view || pos.is_player_air;
-        if (isAirView && (pos.x_ground === null || pos.x_ground === undefined)) {
-            return false;
+        // 空战地图上的坐标本来就属于这张图，全部显示。
+        // 其它比赛里隐藏飞机，以及没有换算成地面坐标的空中视角位置。
+        if (!this.isAirMap) {
+            const isAirType = (pos.type || '').toLowerCase() === 'aircraft';
+            if (isAirType) return false;
+            const isAirView = pos.is_player_air_view || pos.is_player_air;
+            if (isAirView && (pos.x_ground === null || pos.x_ground === undefined)) {
+                return false;
+            }
         }
 
         const cat = this._categorize(pos);
