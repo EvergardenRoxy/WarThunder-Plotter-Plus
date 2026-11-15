@@ -1,4 +1,5 @@
 from contextlib import closing
+from datetime import datetime
 from pathlib import Path
 import shutil
 
@@ -79,11 +80,25 @@ def test_delete(conn):
     assert db.count_positions(conn, match_id) == 0
 
 
+def test_delete_reclaims_pages(conn):
+    match_id = db.start_match(conn, "hash")
+    for index in range(200):
+        db.add_tick(conn, match_id, db.TickRecord(index, "tank", "", 0, 0), [POSITION] * 50)
+    db.end_match(conn, match_id)
+    pages = conn.execute("PRAGMA page_count").fetchone()[0]
+    db.delete_match(conn, match_id)
+    assert conn.execute("PRAGMA freelist_count").fetchone()[0] == 0
+    assert conn.execute("PRAGMA page_count").fetchone()[0] < pages
+
+
 def test_close_orphaned(conn):
     db.start_match(conn, "first")
-    db.start_match(conn, "second")
+    second = db.start_match(conn, "second")
     assert db.close_orphaned_matches(conn) == 2
     assert db.get_active_match(conn) is None
+    # 结束时间与开始时间同为本地时间。
+    match = db.get_match(conn, second)
+    assert datetime.fromisoformat(match.ended_at) >= datetime.fromisoformat(match.started_at)
 
 
 def test_two_connections(tmp_path):

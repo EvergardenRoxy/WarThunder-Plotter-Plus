@@ -328,10 +328,14 @@ def delete_match(conn: sqlite3.Connection, match_id: int) -> None:
         conn.execute("DELETE FROM positions WHERE match_id = ?", (match_id,))
         conn.execute("DELETE FROM ticks WHERE match_id = ?", (match_id,))
         conn.execute("DELETE FROM matches WHERE id = ?", (match_id,))
-    conn.execute("PRAGMA incremental_vacuum")
+    # execute 只走一步，回收不完整；executescript 会执行到结束。
+    conn.executescript("PRAGMA incremental_vacuum;")
 
 
 def close_orphaned_matches(conn: sqlite3.Connection) -> int:
     with conn:
-        cursor = conn.execute("UPDATE matches SET ended_at = datetime('now') WHERE ended_at IS NULL")
+        # 与 started_at 一样用本地时间。
+        cursor = conn.execute(
+            "UPDATE matches SET ended_at = ? WHERE ended_at IS NULL", (datetime.now().isoformat(),)
+        )
     return cursor.rowcount
