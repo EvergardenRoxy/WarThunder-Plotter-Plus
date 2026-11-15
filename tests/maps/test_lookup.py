@@ -2,7 +2,7 @@ from dataclasses import replace
 import json
 
 from wt_plotter.maps import lookup
-from wt_plotter.maps.table import MAPS, UNKNOWN_MAP
+from wt_plotter.maps.table import MAPS, UNKNOWN_MAP, BattleType
 
 
 def test_exact():
@@ -35,3 +35,9 @@ def test_empty_hash():
 
 def test_hamming():
     assert lookup.hamming_distance("f0", "0f") == 8
+
+
+def test_local_krymsk_hash():
+    # 游戏更新后的 Krymsk 地面图，已用 2026-11-15 的比赛录像核对。
+    info = lookup.lookup_map("33d843f98ff212cce719ce03248de199430f4e1f91b356632bb4e5680")
+    assert (info.map_id, info.battle_type, info.location) == ("avg_krymsk_tankmap", BattleType.GROUND, "krymsk")

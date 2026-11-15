@@ -7,6 +7,7 @@
 - The match page now fits on one screen: the map fills the available height, the playback bar sits under it, match details move into the header, and header items are vertically centered.
 - The map canvas fills the whole map area, so zooming in no longer leaves empty side bands.
 - Track linking now limits each step by speed (tuned on seven recorded matches). Different aircraft are no longer joined into long straight lines with false death marks. Units that drop off the map for up to 6 s while unspotted rejoin their track, with no line across the gap. Enemies only appear while spotted, so death crosses are drawn for you, your squad and allies only.
+- The updated Krymsk ground map is now recognized (previously recorded as unknown), checked against the match replay.
 - Hovering your own marker shows your exact vehicle. 8111 does not report other units' models, so they show their class only.
 - New "Trail duration" setting (10/30/60/120 s or all, default 30 s). Older parts of a trail fade out, on the live page too.
 - Blip size now ranges from 0.25 to 1.5 (default 0.5), and line width can be scaled from 0.5× to 2×.

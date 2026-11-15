@@ -8,6 +8,12 @@ ROOT = Path(__file__).resolve().parents[1]
 TABLE_PATH = ROOT / "wt_plotter" / "maps" / "table.py"
 NAMES_PATH = ROOT / "tests" / "fixtures" / "map_names_en.json"
 
+# 上游表之外、用真实比赛核对过的哈希：(哈希, map_id, BattleType 名, location)。
+LOCAL_MAPS = [
+    # 2026-11-15 采集的 match 5，对应录像的关卡为 avg_krymsk（krymsk_dom）；游戏更新后的地面图。
+    ("33d843f98ff212cce719ce03248de199430f4e1f91b356632bb4e5680", "avg_krymsk_tankmap", "GROUND", "krymsk"),
+]
+
 
 def main() -> None:
     sys.dont_write_bytecode = True
@@ -47,6 +53,8 @@ def main() -> None:
         lines.append(
             f"    {dhash!r}: MapInfo({info.map_id!r}, BattleType.{info.battle_type.name}, {name.lower()!r}),"
         )
+    for dhash, map_id, battle_type, location in LOCAL_MAPS:
+        lines.append(f"    {dhash!r}: MapInfo({map_id!r}, BattleType.{battle_type}, {location!r}),")
     lines.append("}")
 
     TABLE_PATH.parent.mkdir(parents=True, exist_ok=True)

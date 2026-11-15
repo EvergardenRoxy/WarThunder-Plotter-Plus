@@ -250,4 +250,5 @@ MAPS: dict[str, MapInfo] = {
     '50c7202e419ca1335064834a8d531ae135d05d4662890a24859324540': MapInfo('water', BattleType.UNKNOWN, 'water'),
     '38e9c0628d9e022c89d4e321d21da16f187f7affefd9ecf8ccf9bcfe0': MapInfo('zhengzhou', BattleType.UNKNOWN, 'zhengzhou'),
     '0000048036008f002604e6061802600580034016800c0020001000000': MapInfo('no_map', BattleType.UNKNOWN, 'no map'),
+    '33d843f98ff212cce719ce03248de199430f4e1f91b356632bb4e5680': MapInfo('avg_krymsk_tankmap', BattleType.GROUND, 'krymsk'),
 }
