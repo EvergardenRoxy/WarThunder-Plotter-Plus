@@ -44,7 +44,7 @@ const VIEW_STYLE = Object.freeze({
 const clamp = (value, [min, max]) => Math.max(min, Math.min(max, value));
 
 class MatchViewer {
-    constructor(canvasId, matchId, { isLive = false, battleType = 'ground', mapKind = 'ground', pollInterval = 500, onRender, onPlayStateChange } = {}) {
+    constructor(canvasId, matchId, { isLive = false, battleType = 'ground', mapKind = 'ground', pollInterval = 500, onRender, onPlayStateChange, onEvents } = {}) {
         this.canvas = document.getElementById(canvasId);
         this.ctx = this.canvas.getContext('2d');
         this.matchId = matchId;
@@ -54,6 +54,10 @@ class MatchViewer {
         this.pollInterval = pollInterval;
         this.onRender = onRender;
         this.onPlayStateChange = onPlayStateChange;
+        this.onEvents = onEvents;
+        this.events = [];
+        this.lastEventTimestamp = 0;
+        this.feedKey = '';
         this.positions = [];
         this.positionCount = 0;
         this.pois = [];
@@ -91,6 +95,7 @@ class MatchViewer {
             this._startPolling();
         } else {
             this._loadPositions();
+            this._loadEvents();
         }
         // 布局网格变化不一定触发窗口 resize，直接观察画布容器。
         new ResizeObserver(() => this._resize()).observe(this.canvas.parentElement);
@@ -302,6 +307,21 @@ class MatchViewer {
         this._updateStats();
     }
 
+    async _loadEvents() {
+        const resp = await fetch(`/api/match/${this.matchId}/events?since=${this.lastEventTimestamp}`);
+        const events = await resp.json();
+        if (events.length === 0) return;
+        for (const event of events) this.events.push(event);
+        this.lastEventTimestamp = events.at(-1).timestamp + 1;
+        this._render();
+    }
+
+    // 时间轴当前时刻之前的播报，最新的在前。
+    _visibleEvents(cutoff) {
+        const end = window.Tracks.lastIndexAtMost(this.events, cutoff, event => event.timestamp);
+        return this.events.slice(0, end + 1).reverse();
+    }
+
     _startPolling() {
         this.polling = true;
         this._poll();
@@ -309,7 +329,7 @@ class MatchViewer {
 
     // 串行轮询：上一轮请求结束后才安排下一轮，同一时刻只有一个位置请求。
     async _poll() {
-        if (this.isLive) await this._loadPositions();
+        if (this.isLive) await Promise.all([this._loadPositions(), this._loadEvents()]);
         await this._checkMatchStatus();
         if (this.polling) {
             this.pollTimer = setTimeout(() => this._poll(), this.pollInterval);
@@ -333,7 +353,7 @@ class MatchViewer {
                     window.location.href = '/live';
                 } else if (this.isLive) {
                     // 结束前写入的最后一批位置可能还没取到，补取一次。
-                    await this._loadPositions();
+                    await Promise.all([this._loadPositions(), this._loadEvents()]);
                     this.isLive = false;
                     this._showMatchEnded();
                 }
@@ -539,6 +559,16 @@ class MatchViewer {
 
         ctx.restore();
         this.onRender?.(this);
+        this._emitEvents(cutoff);
+    }
+
+    // 播报列表有变化时才通知页面重绘。
+    _emitEvents(cutoff) {
+        const visible = this._visibleEvents(cutoff);
+        const key = `${visible.length}:${visible[0]?.timestamp}`;
+        if (key === this.feedKey) return;
+        this.feedKey = key;
+        this.onEvents?.(visible);
     }
 
     _drawTrack(category, points, start, end, earliest) {

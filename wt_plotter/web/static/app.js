@@ -79,6 +79,23 @@ if (mapCanvas) {
             currentTime.textContent = view.formatTime(max * view.timelinePosition);
             maxTime.textContent = view.formatTime(max);
         },
+        onEvents(events) {
+            const feed = document.getElementById('event-feed');
+            const items = events.map(event => {
+                const item = document.createElement('li');
+                const time = document.createElement('time');
+                time.textContent = viewer.formatTime(event.timestamp);
+                item.append(time, event.msg);
+                return item;
+            });
+            if (items.length === 0) {
+                const empty = document.createElement('li');
+                empty.className = 'feed-empty';
+                empty.textContent = t('viewer.feed_empty');
+                items.push(empty);
+            }
+            feed.replaceChildren(...items);
+        },
         onPlayStateChange(isPlaying) {
             playButton.textContent = isPlaying ? t('viewer.pause') : t('viewer.play');
         }

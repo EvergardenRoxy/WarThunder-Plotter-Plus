@@ -452,6 +452,26 @@ a {
   font-size: 0.8125rem;
 }
 
+.event-feed li {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid #262626;
+  color: #ccc;
+}
+
+.event-feed time {
+  flex: none;
+  min-width: 2.5rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.event-feed .feed-empty {
+  color: #666;
+  border: none;
+}
+
 .army-status {
   display: inline-block;
   margin-top: 0.25rem;

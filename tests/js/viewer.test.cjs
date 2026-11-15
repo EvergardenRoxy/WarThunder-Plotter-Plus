@@ -248,3 +248,25 @@ test('finds the marker under the pointer', () => {
     assert.equal(viewer._markerAt(103, 100).icon, 'MediumTank');
     assert.equal(viewer._markerAt(140, 100), null);
 });
+
+test('visible events are newest first up to the cutoff', () => {
+    const viewer = makeViewer(load('tracks.js', 'viewer.js'), {
+        events: [{ timestamp: 1000, msg: 'a' }, { timestamp: 2000, msg: 'b' }, { timestamp: 5000, msg: 'c' }],
+    });
+    assert.deepEqual(viewer._visibleEvents(3000).map(e => e.timestamp), [2000, 1000]);
+});
+
+test('loading events advances the cursor', async () => {
+    const context = load('tracks.js', 'viewer.js');
+    const urls = [];
+    context.fetch = async url => {
+        urls.push(url);
+        return { json: async () => [{ timestamp: 1500, msg: 'm' }] };
+    };
+    const viewer = makeViewer(context, { events: [], lastEventTimestamp: 0 });
+    await viewer._loadEvents();
+    assert.equal(viewer.lastEventTimestamp, 1501);
+    await viewer._loadEvents();
+    assert.match(urls[1], /since=1501/);
+    assert.equal(viewer.events.length, 2);
+});

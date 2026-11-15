@@ -146,6 +146,11 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
             since = 0
         return jsonify(db.get_positions_bundle(connection(), match_id, since))
 
+    @app.get("/api/match/<int:match_id>/events")
+    def api_events(match_id):
+        since = request.args.get("since", 0, type=int)
+        return jsonify(db.get_events(connection(), match_id, since))
+
     @app.get("/api/match/<int:match_id>/map.png")
     def api_map_image(match_id):
         match = db.get_match(connection(), match_id)

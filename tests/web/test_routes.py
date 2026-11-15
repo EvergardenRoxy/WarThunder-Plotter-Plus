@@ -174,3 +174,10 @@ def test_default_map_follows_first_sortie(client, conn, match_id, army, vehicle,
         text = client.get(path).text
         assert f'data-default-map="{expected}"' in text
         assert 'data-has-air-map="true"' in text
+
+
+def test_events_since(client, conn, match_id):
+    db.add_events(conn, match_id, [db.EventRecord(1.0, 1, "first", "{}"), db.EventRecord(3.0, 2, "second", "{}")])
+    response = client.get(f"/api/match/{match_id}/events", query_string={"since": 2000})
+    assert response.status_code == 200
+    assert response.json == [{"timestamp": 3000, "msg": "second"}]
