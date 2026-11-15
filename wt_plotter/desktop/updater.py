@@ -49,6 +49,8 @@ def _write_update_script(
     replacement = str(new_exe).replace("%", "%%")
     script_content = (
         "@echo off\n"
+        # 脚本是 UTF-8，先切换代码页，否则非 ASCII 路径会乱码。
+        "chcp 65001 >nul\n"
         "setlocal\n"
         f"set CURRENT=\"{current}\"\n"
         f"set NEW=\"{replacement}\"\n"
