@@ -273,8 +273,8 @@ window.Tracks = { linkTracks, clusterPoints, lastIndexAtMost };
 **Files:**
 - Modify: `wt_plotter/__init__.py` `CHANGELOG.md` `CHANGELOG.zh-CN.md`
 
-- [ ] **Step 1:** 版本号改为 `0.3.2`。如有测试断言旧版本号，同步修改。
-- [ ] **Step 2:** 中英文变更日志各新增 `0.3.2` 一节，分别写明：坐飞机时不再误判为空中视角，地面坐标不再被错算；地图改为轨迹线，并显示当前位置和阵亡位置；出生点和占领点不再重叠成团，占领点显示归属；新增轨迹长度选项和回放播放；高分屏下画面清晰。
-- [ ] **Step 3:** 跑全量测试至全绿。
-- [ ] **Step 4:** 运行 `scripts\build_windows.bat` 构建 EXE。构建失败时把现象记入 `PROGRESS.md` 的“待人工复核”，不算阻塞。
-- [ ] **Step 5:** 提交：`chore: release 0.3.2`。
+- [x] **Step 1:** 版本号改为 `0.3.2`。如有测试断言旧版本号，同步修改。
+- [x] **Step 2:** 中英文变更日志各新增 `0.3.2` 一节，分别写明：坐飞机时不再误判为空中视角，地面坐标不再被错算；地图改为轨迹线，并显示当前位置和阵亡位置；出生点和占领点不再重叠成团，占领点显示归属；新增轨迹长度选项和回放播放；高分屏下画面清晰。
+- [x] **Step 3:** 跑全量测试至全绿。
+- [x] **Step 4:** 运行 `scripts\build_windows.bat` 构建 EXE。构建失败时把现象记入 `PROGRESS.md` 的“待人工复核”，不算阻塞。
+- [x] **Step 5:** 提交：`chore: release 0.3.2`。

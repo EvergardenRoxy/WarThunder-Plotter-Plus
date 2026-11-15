@@ -2,6 +2,14 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.3.2
+
+- Air-view detection uses map evidence so ground coordinates stay correct when the player takes to the air.
+- Match maps show color-coded tracks, each unit's latest position, and crosses where tracks appear to end in a death.
+- Nearby spawn and capture markers are grouped, and capture markers show their team ownership.
+- The live and replay pages offer selectable trail lengths, and replays can be played at 10× speed.
+- Maps and overlays render at the screen's pixel density.
+
 ## 0.3.1
 
 - Fixed the viewer failing on long matches: the timeline and live cursor no longer break once a match holds more than roughly a hundred thousand positions.
