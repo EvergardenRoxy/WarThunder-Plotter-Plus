@@ -300,5 +300,7 @@
   "viewer.details": "比赛详情",
   "viewer.feed": "战斗播报",
   "viewer.feed_empty": "暂无播报",
-  "filter.line_scale": "线条粗细"
+  "filter.line_scale": "线条粗细",
+  "viewer.speed": "倍速",
+  "viewer.speed_value": "{n}×"
 }

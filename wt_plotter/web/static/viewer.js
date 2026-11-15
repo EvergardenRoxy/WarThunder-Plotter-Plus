@@ -20,9 +20,9 @@ const VIEW_STYLE = Object.freeze({
     fadeBands: 8,
     blipRange: [0.25, 1.5],
     lineScaleRange: [0.5, 2],
+    speedRange: [5, 40],
     defaults: { trail: 30, blipSize: 0.5, lineScale: 1, speed: 10 },
     settingsKey: 'wtp.viewer',
-    playbackSpeed: 10,
 });
 
 const clamp = (value, [min, max]) => Math.max(min, Math.min(max, value));
@@ -60,6 +60,7 @@ class MatchViewer {
         this.blipSize = settings.blipSize;
         this.lineScale = settings.lineScale;
         this.trail = settings.trail;
+        this.speed = settings.speed;
         this.timelinePosition = 1.0;
         this.maxTimestamp = 0;
         this.isPlaying = false;
@@ -578,7 +579,7 @@ class MatchViewer {
 
     _saveSettings() {
         window.Settings.save(VIEW_STYLE.settingsKey, {
-            trail: this.trail, blipSize: this.blipSize, lineScale: this.lineScale, filters: this.filters,
+            trail: this.trail, blipSize: this.blipSize, lineScale: this.lineScale, speed: this.speed, filters: this.filters,
         });
     }
 
@@ -598,6 +599,11 @@ class MatchViewer {
         this.lineScale = clamp(scale, VIEW_STYLE.lineScaleRange);
         this._saveSettings();
         this._render();
+    }
+
+    setSpeed(speed) {
+        this.speed = clamp(speed, VIEW_STYLE.speedRange);
+        this._saveSettings();
     }
 
     setTrail(seconds) {
@@ -639,7 +645,7 @@ class MatchViewer {
     }
 
     _advancePlayback(dt) {
-        this.setTimeline(this.timelinePosition + dt * VIEW_STYLE.playbackSpeed / this.maxTimestamp);
+        this.setTimeline(this.timelinePosition + dt * this.speed / this.maxTimestamp);
         if (this.timelinePosition === 1) this.pause();
     }
 

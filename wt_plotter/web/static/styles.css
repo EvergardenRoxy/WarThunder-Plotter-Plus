@@ -240,6 +240,20 @@ a {
   cursor: pointer;
 }
 
+.speed-label {
+  color: #bbb;
+  white-space: nowrap;
+}
+
+.speed-slider {
+  width: 140px;
+  accent-color: var(--accent);
+}
+
+.speed-value {
+  min-width: 2.5rem;
+}
+
 .timeline-display,
 .control-value,
 #zoom-level {

@@ -89,10 +89,10 @@ test('includes both ends of the selected trail window', () => {
     assert.deepEqual(Array.from(viewer._visibleRange(points, 9500)), [0, 9]);
 });
 
-test('advances playback at 10x and stops at the end', () => {
+test('advances playback at the chosen speed and stops at the end', () => {
     const context = load('tracks.js', 'viewer.js');
     context.cancelAnimationFrame = () => {};
-    const viewer = makeViewer(context, { maxTimestamp: 10000, timelinePosition: 0.5, isPlaying: true });
+    const viewer = makeViewer(context, { maxTimestamp: 10000, timelinePosition: 0.5, isPlaying: true, speed: 10 });
     viewer._advancePlayback(100);
     assert.equal(viewer.timelinePosition, 0.6);
     assert.equal(viewer.isPlaying, true);
@@ -114,6 +114,7 @@ test('restarts playback from the end and cancels the pending frame on pause', ()
     context.cancelAnimationFrame = id => { cancelled = id; };
     const viewer = makeViewer(context, {
         maxTimestamp: 10000,
+        speed: 10,
         onPlayStateChange(isPlaying) { stateChanges.push(isPlaying); },
     });
     viewer.play();
@@ -156,4 +157,28 @@ test('blip size and line scale clamp and are saved', () => {
     viewer.setLineScale(0.1);
     assert.equal(viewer.lineScale, 0.5);
     assert.equal(JSON.parse(context.localStorage.getItem('wtp.viewer')).lineScale, 0.5);
+});
+
+test('playback uses the speed setting', () => {
+    const viewer = makeViewer(load('tracks.js', 'viewer.js'), { maxTimestamp: 100000, timelinePosition: 0, speed: 20 });
+    viewer._advancePlayback(1000);
+    assert.equal(viewer.timelinePosition, 0.2);
+});
+
+test('play keeps the current position unless at the end', () => {
+    const context = load('tracks.js', 'viewer.js');
+    context.requestAnimationFrame = () => 1;
+    const viewer = makeViewer(context, { maxTimestamp: 10000, timelinePosition: 0.5 });
+    viewer.play();
+    assert.equal(viewer.timelinePosition, 0.5);
+});
+
+test('speed clamps to 5x-40x and is saved', () => {
+    const context = load('tracks.js', 'settings.js', 'viewer.js');
+    const viewer = makeViewer(context);
+    viewer.setSpeed(100);
+    assert.equal(viewer.speed, 40);
+    viewer.setSpeed(1);
+    assert.equal(viewer.speed, 5);
+    assert.equal(JSON.parse(context.localStorage.getItem('wtp.viewer')).speed, 5);
 });

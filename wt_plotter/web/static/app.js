@@ -91,14 +91,14 @@ if (mapCanvas) {
         checkbox.checked = viewer.filters[checkbox.dataset.filter];
         checkbox.addEventListener('change', () => viewer.setFilter(checkbox.dataset.filter, checkbox.checked));
     }
-    const bindSlider = (id, value, setter) => {
+    const bindSlider = (id, value, setter, format = text => text) => {
         const slider = document.getElementById(id);
         const label = document.getElementById(`${id}-value`);
         slider.value = value;
-        label.textContent = slider.value;
+        label.textContent = format(slider.value);
         slider.addEventListener('input', () => {
             setter(Number(slider.value));
-            label.textContent = slider.value;
+            label.textContent = format(slider.value);
         });
     };
     bindSlider('blip-size', viewer.blipSize, value => viewer.setBlipSize(value));
@@ -109,6 +109,8 @@ if (mapCanvas) {
         trail.add(new Option(label, String(seconds), false, seconds === viewer.trail));
     }
     trail.addEventListener('change', () => viewer.setTrail(Number(trail.value)));
+
+    if (playButton) bindSlider('speed-slider', viewer.speed, value => viewer.setSpeed(value), n => t('viewer.speed_value', { n }));
 
     playButton?.addEventListener('click', () => {
         if (viewer.isPlaying) viewer.pause();

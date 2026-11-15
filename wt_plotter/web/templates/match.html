@@ -43,6 +43,9 @@
             <button type="button" id="timeline-play" class="btn btn-primary play-button">{{ t('viewer.play') }}</button>
             <input type="range" id="timeline-slider" min="0" max="100" step="any" value="100" class="timeline-slider" aria-label="{{ t('viewer.timeline') }}" title="{{ t('viewer.timeline_hint') }}">
             <span class="timeline-display"><span id="timeline-current">--:--</span> / <span id="timeline-max">--:--</span></span>
+            <label for="speed-slider" class="speed-label">{{ t('viewer.speed') }}</label>
+            <input type="range" id="speed-slider" min="5" max="40" step="1" class="speed-slider">
+            <span id="speed-slider-value" class="control-value speed-value"></span>
         </div>
         {% endif %}
     </section>

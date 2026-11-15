@@ -300,5 +300,7 @@
   "viewer.details": "Match details",
   "viewer.feed": "Battle feed",
   "viewer.feed_empty": "No messages yet",
-  "filter.line_scale": "Line width"
+  "filter.line_scale": "Line width",
+  "viewer.speed": "Speed",
+  "viewer.speed_value": "{n}×"
 }
