@@ -2,6 +2,19 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.3.1
+
+- Fixed the viewer failing on long matches: the timeline and live cursor no longer break once a match holds more than roughly a hundred thousand positions.
+- The live view now polls one request at a time, which removes duplicated positions, and fetches the final positions when a match ends.
+- Matches on air battle maps are now drawn. Ground matches still hide aircraft and air-view positions that have no ground coordinates.
+- The first frame after returning from the air view to the ground is no longer converted a second time.
+- Spawn points and airfields that appear after the first frame are now recorded, once per location.
+- Only one capture can record into a data folder. A second `watch` or `capture` exits with an error, and starting `watch` while a `serve` instance is running logs a warning.
+- `serve` reports the vehicle type of the active match from the latest recorded tick.
+- Deleting a match now returns its disk space, and matches closed after a crash get a local end time.
+- The update script works when the EXE or the temp folder path contains non-ASCII characters.
+- Languages are discovered from the locale files, and the selector shows each language's own name.
+
 ## 0.3.0
 
 - Rebuilt the upstream recorder as the `wt_plotter` package, with independently testable capture, storage, map, web, and desktop modules.
