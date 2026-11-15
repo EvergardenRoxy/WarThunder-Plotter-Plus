@@ -3,21 +3,24 @@ from pathlib import Path
 import re
 from string import Formatter
 
-from wt_plotter.i18n import load_catalog
+import pytest
+
+from wt_plotter.i18n import LANGUAGES, load_catalog
 from wt_plotter.maps.table import MAPS, BattleType
 
 
 MAP_IDS = {info.map_id for info in MAPS.values()}
 
 
-def test_same_keys():
-    assert load_catalog("en").keys() == load_catalog("zh").keys()
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_same_keys(lang):
+    assert load_catalog(lang).keys() == load_catalog("en").keys()
 
 
-def test_every_map_named():
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_every_map_named(lang):
     keys = {f"map.{map_id}" for map_id in MAP_IDS | {"unknown"}}
-    assert keys <= load_catalog("en").keys()
-    assert keys <= load_catalog("zh").keys()
+    assert keys <= load_catalog(lang).keys()
 
 
 def test_en_map_names_match_upstream():
@@ -34,19 +37,20 @@ def test_zh_map_names_untranslated():
         assert zh[f"map.{map_id}"] == en[f"map.{map_id}"]
 
 
-def test_battle_types_named():
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_battle_types_named(lang):
     keys = {f"battle_type.{kind.value}" for kind in BattleType}
-    assert keys <= load_catalog("en").keys()
-    assert keys <= load_catalog("zh").keys()
+    assert keys <= load_catalog(lang).keys()
 
 
-def test_placeholders_match():
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_placeholders_match(lang):
     formatter = Formatter()
-    en, zh = load_catalog("en"), load_catalog("zh")
+    en, other = load_catalog("en"), load_catalog(lang)
     for key in en:
         en_fields = {field for _, field, _, _ in formatter.parse(en[key]) if field is not None}
-        zh_fields = {field for _, field, _, _ in formatter.parse(zh[key]) if field is not None}
-        assert en_fields == zh_fields, key
+        other_fields = {field for _, field, _, _ in formatter.parse(other[key]) if field is not None}
+        assert en_fields == other_fields, key
 
 
 def test_zh_has_chinese():

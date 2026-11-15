@@ -13,8 +13,8 @@
             <a href="{{ url_for('index') }}">{{ t('nav.matches') }}</a>
             <a href="{{ url_for('live_view') }}">{{ t('nav.live') }}</a>
             <select id="language-select" class="language-select" aria-label="{{ t('nav.language') }}">
-                {% for code in languages %}
-                <option value="{{ code }}"{% if lang == code %} selected{% endif %}>{{ t('nav.english') if code == 'en' else t('nav.chinese') }}</option>
+                {% for code, name in languages.items() %}
+                <option value="{{ code }}"{% if lang == code %} selected{% endif %}>{{ name }}</option>
                 {% endfor %}
             </select>
             <button id="quit-app" class="btn btn-danger" title="{{ t('nav.quit_title') }}">{{ t('nav.quit') }}</button>

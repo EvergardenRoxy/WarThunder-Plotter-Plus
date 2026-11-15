@@ -7,7 +7,7 @@ from flask import Flask, g, jsonify, render_template, request, send_from_directo
 
 from wt_plotter.capture.capturer import Capturer
 from wt_plotter.config import APP_SETTINGS, CAPTURE_DEFAULTS
-from wt_plotter.i18n import LANGUAGES, get_language, load_catalog, set_language, translate
+from wt_plotter.i18n import LANGUAGES, get_language, language_names, load_catalog, set_language, translate
 from wt_plotter.maps.lookup import lookup_map
 from wt_plotter.storage import db
 
@@ -46,7 +46,7 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
 
     @app.context_processor
     def language_context():
-        return {"lang": g.lang, "catalog": load_catalog(g.lang), "languages": LANGUAGES, "t": t, "icons": BATTLE_ICONS}
+        return {"lang": g.lang, "catalog": load_catalog(g.lang), "languages": language_names(), "t": t, "icons": BATTLE_ICONS}
 
     @app.template_filter("dt")
     def format_datetime(value):

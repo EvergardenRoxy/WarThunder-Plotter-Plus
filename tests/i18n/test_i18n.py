@@ -34,3 +34,21 @@ def test_set_language_roundtrip(tmp_path):
 def test_set_language_unknown(tmp_path):
     with pytest.raises(ValueError):
         i18n.set_language(tmp_path / "settings.json", "fr")
+
+
+def test_languages_come_from_locale_files():
+    assert set(i18n.LANGUAGES) == {path.stem for path in i18n.LOCALES_DIR.glob("*.json")}
+    assert i18n.DEFAULT_LANGUAGE in i18n.LANGUAGES
+    assert set(i18n.WINDOWS_LANGUAGES.values()) <= set(i18n.LANGUAGES)
+
+
+def test_language_names_are_native():
+    names = i18n.language_names()
+    assert names.keys() == set(i18n.LANGUAGES)
+    assert (names["en"], names["zh"]) == ("English", "中文")
+
+
+def test_get_language_unsupported_falls_back(tmp_path):
+    path = tmp_path / "settings.json"
+    path.write_text('{"language": "xx"}', encoding="utf-8")
+    assert i18n.get_language(path) == i18n.detect_system_language()
