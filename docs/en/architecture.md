@@ -22,3 +22,5 @@ flowchart LR
 - `maps/lookup.py` resolves map IDs and battle types by exact or fuzzy dHash. Display names are resolved from the current catalog when the web response is built.
 - `storage/db.py` owns the database schema and query shapes. The capture thread and each HTTP request open their own connections.
 - `web/` renders pages through Jinja. The browser combines tick metadata with positions by `tick_id` for real-time display and replay.
+- While the map is valid, the capture thread also polls `/hudmsg`. The first batch of each match only advances the cursor; later messages go into the `events` table. If the endpoint is unavailable the feed is skipped and tracking continues.
+- Shared front-end modules: `settings.js` keeps viewer settings in localStorage, `shapes.js` draws unit class shapes, and `tracks.js` links tracks. `viewer.js` handles drawing, the air map switch and the feed list.

@@ -10,14 +10,17 @@
 
 枚举表集中保存位置与 tick 中重复的字符串。每个连接缓存自己的枚举 ID，事务提交后才把新 ID 加入缓存。接口只需发送一次 tick 元数据，位置通过 `tick_id` 引用它。
 
+`events` 表保存战斗播报：比赛 ID、收到时刻相对比赛开始的毫秒数（与 tick 同一基准）、游戏消息 ID、原文和整条原始 JSON。
+
 ```mermaid
 erDiagram
     matches ||--o{ ticks : records
     ticks ||--o{ positions : contains
+    matches ||--o{ events : logs
 ```
 
 ## 读取与清理
 
-`GET /api/match/<id>/positions` 返回 `ticks` 和 `positions`。整数 `since` 按毫秒解释，小数按秒解释，结果包含起点时间戳。回放器关联两份列表，存在换算结果时使用地面坐标。
+`GET /api/match/<id>/positions` 返回 `ticks` 和 `positions`。整数 `since` 按毫秒解释，小数按秒解释，结果包含起点时间戳。回放器关联两份列表，存在换算结果时使用地面坐标。`GET /api/match/<id>/events?since=<毫秒>` 按时间升序返回播报。
 
-数据库采用 WAL，采集线程和网页请求各自打开连接。删除已结束比赛时，在同一事务中删除位置、tick 和比赛行，再请求增量回收。已有数据库沿用原 SQLite 自动回收模式。采集启动时结束上次中断遗留的比赛。
+数据库采用 WAL，采集线程和网页请求各自打开连接。删除已结束比赛时，在同一事务中删除播报、位置、tick 和比赛行，再请求增量回收。已有数据库沿用原 SQLite 自动回收模式。采集启动时结束上次中断遗留的比赛。

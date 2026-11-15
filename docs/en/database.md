@@ -10,14 +10,17 @@ A tick holds the match ID, timestamp in integer milliseconds, vehicle and army I
 
 The enum tables hold distinct strings shared by positions and ticks. Each connection caches enum IDs, and only committed IDs enter that cache. This saves repeated text and allows the API to send each tick once with positions referring to it by `tick_id`.
 
+The `events` table stores the battle feed: match ID, receive time in milliseconds from match start (the same base as ticks), the game's message ID, the message text, and the raw JSON entry.
+
 ```mermaid
 erDiagram
     matches ||--o{ ticks : records
     ticks ||--o{ positions : contains
+    matches ||--o{ events : logs
 ```
 
 ## Reads and cleanup
 
-`GET /api/match/<id>/positions` returns `ticks` and `positions`. Integer `since` values are milliseconds and decimal values are seconds. The filter includes the given timestamp. The viewer joins the returned arrays and uses mapped ground coordinates when available.
+`GET /api/match/<id>/positions` returns `ticks` and `positions`. Integer `since` values are milliseconds and decimal values are seconds. The filter includes the given timestamp. The viewer joins the returned arrays and uses mapped ground coordinates when available. `GET /api/match/<id>/events?since=<ms>` returns feed messages in time order.
 
-The app uses WAL and a database connection per capture thread or web request. Deleting a finished match removes its positions, ticks, and match row in one transaction, then requests incremental vacuum. Existing databases retain their SQLite auto-vacuum mode. At capture startup, matches left active by an interrupted run are marked ended.
+The app uses WAL and a database connection per capture thread or web request. Deleting a finished match removes its feed messages, positions, ticks, and match row in one transaction, then requests incremental vacuum. Existing databases retain their SQLite auto-vacuum mode. At capture startup, matches left active by an interrupted run are marked ended.

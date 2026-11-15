@@ -22,3 +22,5 @@ flowchart LR
 - `maps/lookup.py` 通过 dHash 精确或模糊查找地图 ID 和战斗类型。网页生成响应时用当前语言文件取得显示名。
 - `storage/db.py` 定义数据库表结构和查询结果。采集线程与每个 HTTP 请求各用独立连接。
 - `web/` 用 Jinja 渲染页面。浏览器按 `tick_id` 合并 tick 元数据与位置，供实时显示和回放使用。
+- 采集线程在地图有效时请求 `/hudmsg`。每场第一批消息只用来推进游标，之后的消息写入 `events` 表；接口不可用时跳过，不影响轨迹采集。
+- 前端通用模块：`settings.js` 用 localStorage 读写查看器设置，`shapes.js` 绘制兵种形状，`tracks.js` 串联轨迹。`viewer.js` 负责业务绘制、空战图切换和播报列表。
