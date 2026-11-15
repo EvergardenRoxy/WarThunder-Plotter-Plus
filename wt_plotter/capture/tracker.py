@@ -20,7 +20,7 @@ class _MatchState:
     air_map_hash: str = ""
     invalid_since: float | None = None
     nuke_detected: bool = False
-    poi_captured: bool = False
+    saved_pois: set[tuple[str, float, float]] = field(default_factory=set)
     initial_capture_set: bool = False
     capture_signature: tuple[tuple[float, float], ...] | None = None
     previous_objects: list[dict] = field(default_factory=list)
@@ -131,7 +131,8 @@ class MatchTracker:
             isinstance(icon := obj.get("icon"), str) and icon.lower() in CAPTURE_FILTERS.air_defence_icons
             for obj in valid_objects
         )
-        air_view = is_air or poi_changed or air_defence_seen
+        # 占领点坐标变化表示地图视角切换：上一帧是地面才算进入空中视角，否则是切回地面。
+        air_view = is_air or air_defence_seen or (poi_changed and not state.previous_air_view)
         if air_view and not state.previous_air_view and state.transform is None and state.previous_objects:
             state.transform = fit_air_transform(state.previous_objects, objects)
             if state.transform is not None:
@@ -145,18 +146,21 @@ class MatchTracker:
             vehicle or CAPTURE_DEFAULTS.vehicle_type, int(is_air), int(air_view),
         )
         db.add_tick(self.conn, state.match_id, tick, positions)
-        if any(position.is_poi for position in positions):
-            state.poi_captured = True
 
     def _build_positions(self, objects: list[dict], air_view: bool) -> list[db.PositionRecord]:
         state = self._state
+        precision = CAPTURE_SETTINGS.signature_rounding
         positions = []
         for obj in objects:
             obj_type = obj.get("type", "unknown")
             is_poi = obj_type in CAPTURE_FILTERS.poi_types
-            if is_poi and obj_type != CAPTURE_FILTERS.capture_zone_type and state.poi_captured:
-                continue
             x, y = obj["x"], obj["y"]
+            # 出生点、机场等静态标记每个位置只存一次。
+            if is_poi and obj_type != CAPTURE_FILTERS.capture_zone_type:
+                key = (obj_type, round(x, precision), round(y, precision))
+                if key in state.saved_pois:
+                    continue
+                state.saved_pois.add(key)
             x_ground, y_ground = to_ground(x, y, state.transform) if air_view and state.transform else (None, None)
             positions.append(db.PositionRecord(
                 x, y, obj.get("color", "#FFFFFF"), obj_type, obj.get("icon", "unknown"), int(is_poi),

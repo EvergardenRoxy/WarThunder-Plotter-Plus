@@ -192,3 +192,30 @@ def test_unknown_hash_logged(setup, conn, tmp_path, monkeypatch):
     dhash = db.get_active_match(conn).map_hash
     assert lookup.lookup_map(dhash) is UNKNOWN_MAP
     assert [json.loads(line)["hash"] for line in log.read_text(encoding="utf-8").splitlines()] == [dhash]
+
+
+def test_late_static_poi_is_saved_once(setup, conn, obj):
+    match, _, _ = setup
+    zone = obj(0.2, 0.3, type="capture_zone")
+    respawn = obj(0.7, 0.8, type="respawn_base_tank")
+    match.tick(0, True, {"army": "tank"}, [zone])
+    match.tick(1, True, {"army": "tank"}, [zone, respawn])
+    match.tick(2, True, {"army": "tank"}, [zone, respawn])
+    positions = db.get_positions_bundle(conn, match.match_id, 0)["positions"]
+    assert [p["type"] for p in positions].count("respawn_base_tank") == 1
+    assert [p["type"] for p in positions].count("capture_zone") == 3
+
+
+def test_return_to_ground_is_not_air_view(setup, conn, obj):
+    match, _, _ = setup
+    points = [(0.2, 0.2), (0.4, 0.3), (0.6, 0.7), (0.8, 0.5)]
+    ground = [obj(x, y, type="capture_zone") for x, y in points]
+    air = [obj(0.25 * x + 0.1, 0.25 * y + 0.2, type="capture_zone") for x, y in points]
+    match.tick(0, True, {"army": "tank"}, ground)
+    match.tick(1, True, {"army": "air"}, air)
+    match.tick(2, True, {"army": "tank"}, ground)
+    bundle = db.get_positions_bundle(conn, match.match_id, 0)
+    assert [tick["is_player_air_view"] for tick in bundle["ticks"]] == [0, 1, 0]
+    # 空中那一帧换算回地面坐标，回到地面后不再换算。
+    assert bundle["positions"][4]["x_ground"] == pytest.approx(0.2, abs=1e-4)
+    assert all(p["x_ground"] is None for p in bundle["positions"][8:])
