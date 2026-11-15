@@ -28,12 +28,13 @@ const VIEW_STYLE = Object.freeze({
 const clamp = (value, [min, max]) => Math.max(min, Math.min(max, value));
 
 class MatchViewer {
-    constructor(canvasId, matchId, { isLive = false, isAirMap = false, pollInterval = 500, onRender, onPlayStateChange } = {}) {
+    constructor(canvasId, matchId, { isLive = false, battleType = 'ground', mapKind = 'ground', pollInterval = 500, onRender, onPlayStateChange } = {}) {
         this.canvas = document.getElementById(canvasId);
         this.ctx = this.canvas.getContext('2d');
         this.matchId = matchId;
         this.isLive = isLive;
-        this.isAirMap = isAirMap;
+        this.battleType = battleType;
+        this.mapKind = mapKind;
         this.pollInterval = pollInterval;
         this.onRender = onRender;
         this.onPlayStateChange = onPlayStateChange;
@@ -41,6 +42,7 @@ class MatchViewer {
         this.positionCount = 0;
         this.pois = [];
         this.tracks = [];
+        this.visiblePois = [];
         this.mapImage = null;
         this.lastTimestamp = 0;
         this.pollTimer = null;
@@ -202,9 +204,25 @@ class MatchViewer {
         }
     }
 
+    get isAirMap() {
+        return this.battleType === 'air' || this.mapKind === 'air';
+    }
+
+    setMapKind(kind) {
+        this.mapKind = kind;
+        this.mapImage = null;
+        this._loadMap();
+        this._buildTracks();
+        this._render();
+        this._updateStats();
+    }
+
     async _loadMap() {
         const img = new Image();
+        const kind = this.mapKind;
         img.onload = () => {
+            // 切换过底图时丢弃旧请求的结果。
+            if (kind !== this.mapKind) return;
             this.mapImage = img;
             this._render();
         };
@@ -212,7 +230,7 @@ class MatchViewer {
             console.warn('Failed to load map image');
             this._render();
         };
-        img.src = `/api/match/${this.matchId}/map.png`;
+        img.src = `/api/match/${this.matchId}/map.png?kind=${kind}`;
     }
 
     async _loadPositions() {
@@ -230,13 +248,8 @@ class MatchViewer {
                     this.lastTimestamp = Math.max(this.lastTimestamp, tick.timestamp + 1);
                     if (!pos.is_poi) this.positionCount++;
 
-                    const x = pos.x_ground ?? pos.x;
-                    const y = pos.y_ground ?? pos.y;
-                    if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) continue;
                     const merged = {
                         ...pos,
-                        x,
-                        y,
                         timestamp: tick.timestamp,
                         army_type: tick.army_type,
                         vehicle_type: tick.vehicle_type,
@@ -321,7 +334,8 @@ class MatchViewer {
         const vehicleType = (this.isLive ? this.liveVehicleType : '') || latest?.vehicle_type || '';
         const mode = document.createElement('span');
         mode.className = armyType === 'air' ? 'army-status air-info' : 'army-status';
-        mode.textContent = armyType === 'air' ? t('viewer.air_view') : t('viewer.ground');
+        const airLabel = this.mapKind === 'air' ? t('viewer.air_view_raw') : t('viewer.air_view');
+        mode.textContent = armyType === 'air' ? airLabel : t('viewer.ground');
         const counts = t('viewer.stats', { positions: this.positionCount, pois: this.poiCount });
         statsEl.replaceChildren(counts, document.createElement('br'), mode);
         if (vehicleType) {
@@ -362,19 +376,35 @@ class MatchViewer {
     }
 
     _isDrawable(pos) {
-        if (this.isAirMap) return true;
+        // 空战图只画空中视角的原始坐标；纯空战图全部可画。
+        if (this.mapKind === 'air') return Boolean(pos.is_player_air_view);
+        if (this.battleType === 'air') return true;
         return pos.type.toLowerCase() !== 'aircraft' && (!pos.is_player_air_view || pos.x_ground != null);
+    }
+
+    // 返回当前底图上的显示坐标，越界返回 null。
+    _displayPoint(pos) {
+        const x = this.mapKind === 'air' ? pos.x : pos.x_ground ?? pos.x;
+        const y = this.mapKind === 'air' ? pos.y : pos.y_ground ?? pos.y;
+        return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x, y } : null;
     }
 
     _buildTracks() {
         const grouped = new Map();
         for (const pos of this.positions) {
             if (!this._isDrawable(pos)) continue;
+            const point = this._displayPoint(pos);
+            if (!point) continue;
             const category = this._categorize(pos);
             if (!grouped.has(category)) grouped.set(category, new Map());
             const times = grouped.get(category);
             if (!times.has(pos.timestamp)) times.set(pos.timestamp, []);
-            times.get(pos.timestamp).push({ x: pos.x, y: pos.y });
+            times.get(pos.timestamp).push(point);
+        }
+        this.visiblePois = [];
+        for (const pos of this.pois) {
+            const point = this._isDrawable(pos) && this._displayPoint(pos);
+            if (point) this.visiblePois.push({ ...pos, ...point });
         }
 
         const options = this.isAirMap ? VIEW_STYLE.link.air : VIEW_STYLE.link.ground;
@@ -396,8 +426,7 @@ class MatchViewer {
     _getPoiClusters(cutoff) {
         const capture = [];
         const respawn = [];
-        for (const pos of this.pois) {
-            if (!this._isDrawable(pos)) continue;
+        for (const pos of this.visiblePois) {
             if (pos.type.toLowerCase() === 'capture_zone') {
                 if (pos.timestamp <= cutoff) capture.push(pos);
             } else {

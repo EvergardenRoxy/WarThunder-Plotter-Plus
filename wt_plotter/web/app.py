@@ -69,6 +69,18 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
         payload["air_map"] = map_metadata(match.air_map_hash) if match.air_map_hash else None
         return payload
 
+    def default_map(match):
+        # 有空战图且第一次出击是飞机时默认显示空战图。
+        if not match.air_map_hash:
+            return "ground"
+        army = db.first_sortie_army(connection(), match.id, CAPTURE_DEFAULTS.placeholder_vehicles)
+        return "air" if army == CAPTURE_DEFAULTS.air_army_type else "ground"
+
+    def render_match(match, is_live):
+        return render_template(
+            "match.html", match=match_page_data(match), is_live=is_live, default_map=default_map(match),
+        )
+
     @app.get("/")
     def index():
         conn = connection()
@@ -88,14 +100,14 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
         match = db.get_match(connection(), match_id)
         if match is None:
             return t("match.not_found"), 404
-        return render_template("match.html", match=match_page_data(match), is_live=match.ended_at is None)
+        return render_match(match, match.ended_at is None)
 
     @app.get("/live")
     def live_view():
         match = db.get_active_match(connection())
         if match is None:
             return render_template("waiting.html")
-        return render_template("match.html", match=match_page_data(match), is_live=True)
+        return render_match(match, True)
 
     @app.get("/api/matches")
     def api_matches():
@@ -137,10 +149,13 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
     @app.get("/api/match/<int:match_id>/map.png")
     def api_map_image(match_id):
         match = db.get_match(connection(), match_id)
-        if match is None or not match.map_hash:
+        if match is None:
             return "", 404
-        map_id = lookup_map(match.map_hash).map_id
-        key = match.map_hash if map_id in ("unknown", "no_map") else map_id
+        map_hash = match.air_map_hash if request.args.get("kind") == "air" else match.map_hash
+        if not map_hash:
+            return "", 404
+        map_id = lookup_map(map_hash).map_id
+        key = map_hash if map_id in ("unknown", "no_map") else map_id
         return send_from_directory(maps_dir, f"{key}.png", mimetype="image/png")
 
     @app.get("/api/active")

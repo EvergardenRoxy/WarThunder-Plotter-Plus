@@ -277,6 +277,40 @@ a {
   border-radius: 8px;
 }
 
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+
+.panel-head h3 {
+  margin: 0;
+}
+
+.map-kind {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.map-kind button {
+  height: 26px;
+  padding: 0 0.6rem;
+  border: none;
+  background: transparent;
+  color: #aaa;
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.map-kind button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
 .panel h3 {
   margin: 0 0 0.4rem;
   font-size: 0.75rem;
@@ -293,7 +327,7 @@ a {
 /* 控件行：标签 | 控件 | 数值，三列对齐。 */
 .control-row {
   display: grid;
-  grid-template-columns: 6.5rem minmax(0, 1fr) 2.25rem;
+  grid-template-columns: 7.5rem minmax(0, 1fr) 2.25rem;
   align-items: center;
   gap: 0.5rem;
   min-height: 36px;
@@ -302,6 +336,11 @@ a {
 
 .control-row > :nth-child(2):last-child {
   grid-column: 2 / 4;
+}
+
+.control-row > label,
+.control-row > span:first-child {
+  white-space: nowrap;
 }
 
 .control-row input[type="range"] {

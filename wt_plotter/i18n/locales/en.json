@@ -302,5 +302,9 @@
   "viewer.feed_empty": "No messages yet",
   "filter.line_scale": "Line width",
   "viewer.speed": "Speed",
-  "viewer.speed_value": "{n}×"
+  "viewer.speed_value": "{n}×",
+  "viewer.map_kind": "Base map",
+  "viewer.map_ground": "Ground",
+  "viewer.map_air": "Air",
+  "viewer.air_view_raw": "✈️ Air View"
 }

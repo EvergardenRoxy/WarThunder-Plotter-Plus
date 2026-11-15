@@ -302,6 +302,24 @@ def get_positions_bundle(conn: sqlite3.Connection, match_id: int, since_ms: int)
     return {"positions": positions, "ticks": list(ticks.values())}
 
 
+def first_sortie_army(conn: sqlite3.Connection, match_id: int, placeholders: tuple[str, ...]) -> str | None:
+    """返回本场第一次出击（跳过占位载具）的兵种。"""
+    marks = ", ".join("?" * len(placeholders))
+    row = conn.execute(
+        f"""
+        SELECT at.value AS army_type
+        FROM ticks tk
+        JOIN enum_army_types at ON at.id = tk.army_type_id
+        JOIN enum_vehicle_types vt ON vt.id = tk.vehicle_type_id
+        WHERE tk.match_id = ? AND vt.value NOT IN ({marks})
+        ORDER BY tk.timestamp_ms, tk.id
+        LIMIT 1
+        """,
+        (match_id, *placeholders),
+    ).fetchone()
+    return row["army_type"] if row is not None else None
+
+
 def count_positions(conn: sqlite3.Connection, match_id: int) -> int:
     return conn.execute("SELECT COUNT(*) FROM positions WHERE match_id = ?", (match_id,)).fetchone()[0]
 

@@ -75,6 +75,8 @@ class CaptureDefaults:
     army_type: str = "tank"
     vehicle_type: str = ""
     air_army_type: str = "air"
+    # 出击前游戏报告的占位载具名。
+    placeholder_vehicles: Tuple[str, ...] = ("", "dummy_plane")
 
 
 @dataclass(frozen=True)

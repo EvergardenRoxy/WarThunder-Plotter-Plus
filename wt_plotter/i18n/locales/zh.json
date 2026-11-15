@@ -302,5 +302,9 @@
   "viewer.feed_empty": "暂无播报",
   "filter.line_scale": "线条粗细",
   "viewer.speed": "倍速",
-  "viewer.speed_value": "{n}×"
+  "viewer.speed_value": "{n}×",
+  "viewer.map_kind": "底图",
+  "viewer.map_ground": "地面图",
+  "viewer.map_air": "空战图",
+  "viewer.air_view_raw": "✈️ 空中视角"
 }

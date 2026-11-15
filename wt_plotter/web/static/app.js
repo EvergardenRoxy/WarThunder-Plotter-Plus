@@ -69,7 +69,8 @@ if (mapCanvas) {
     const playButton = document.getElementById('timeline-play');
     const viewer = new MatchViewer(mapCanvas.id, Number(mapCanvas.dataset.matchId), {
         isLive: mapCanvas.dataset.live === 'true',
-        isAirMap: mapCanvas.dataset.battleType === 'air',
+        battleType: mapCanvas.dataset.battleType,
+        mapKind: mapCanvas.dataset.defaultMap,
         pollInterval: 500,
         onRender(view) {
             if (!timeline) return;
@@ -82,6 +83,18 @@ if (mapCanvas) {
             playButton.textContent = isPlaying ? t('viewer.pause') : t('viewer.play');
         }
     });
+
+    const mapKindButtons = document.querySelectorAll('[data-map-kind]');
+    const markMapKind = () => {
+        for (const button of mapKindButtons) button.classList.toggle('active', button.dataset.mapKind === viewer.mapKind);
+    };
+    for (const button of mapKindButtons) {
+        button.addEventListener('click', () => {
+            viewer.setMapKind(button.dataset.mapKind);
+            markMapKind();
+        });
+    }
+    markMapKind();
 
     document.getElementById('zoom-in').addEventListener('click', () => viewer.zoomIn());
     document.getElementById('zoom-out').addEventListener('click', () => viewer.zoomOut());

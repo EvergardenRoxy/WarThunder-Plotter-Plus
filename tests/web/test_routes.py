@@ -12,6 +12,8 @@ from wt_plotter.web.app import create_app
 
 MAP_ID = "avg_normandy_tankmap"
 MAP_HASH = next(key for key, info in MAPS.items() if info.map_id == MAP_ID and info.battle_type is BattleType.GROUND)
+AIR_MAP_ID = "avg_egypt_sinai_map"
+AIR_MAP_HASH = next(key for key, info in MAPS.items() if info.map_id == AIR_MAP_ID)
 
 
 @pytest.fixture
@@ -136,3 +138,39 @@ def test_status_without_capturer_reads_latest_tick(client, conn, match_id):
     )
     status = client.get("/api/status").json
     assert (status["army_type"], status["vehicle_type"]) == ("air", "test_plane")
+
+
+def _copy_map(tmp_path, map_id):
+    path = tmp_path / "maps" / f"{map_id}.png"
+    path.parent.mkdir(exist_ok=True)
+    path.write_bytes((PATHS.maps_dir / path.name).read_bytes())
+    return path
+
+
+def test_map_png_air_kind(client, conn, match_id, tmp_path):
+    url = f"/api/match/{match_id}/map.png"
+    _copy_map(tmp_path, MAP_ID)
+    assert client.get(url, query_string={"kind": "air"}).status_code == 404
+    db.set_air_map(conn, match_id, AIR_MAP_HASH)
+    path = _copy_map(tmp_path, AIR_MAP_ID)
+    response = client.get(url, query_string={"kind": "air"})
+    assert response.status_code == 200
+    assert response.data == path.read_bytes()
+
+
+def _sortie(conn, match_id, army, vehicle):
+    position = db.PositionRecord(0.5, 0.5, "#fa0c00", "ground_model", "Tank", 0)
+    db.add_tick(conn, match_id, db.TickRecord(0.0, "air", "dummy_plane", 1, 0), [position])
+    db.add_tick(conn, match_id, db.TickRecord(1.0, army, vehicle, int(army == "air"), int(army == "air")), [position])
+
+
+@pytest.mark.parametrize("army, vehicle, expected", [("air", "f-4s", "air"), ("tank", "germ_hummel", "ground")])
+def test_default_map_follows_first_sortie(client, conn, match_id, army, vehicle, expected):
+    _sortie(conn, match_id, army, vehicle)
+    for path in (f"/match/{match_id}", "/live"):
+        assert 'data-default-map="ground"' in client.get(path).text
+    db.set_air_map(conn, match_id, AIR_MAP_HASH)
+    for path in (f"/match/{match_id}", "/live"):
+        text = client.get(path).text
+        assert f'data-default-map="{expected}"' in text
+        assert 'data-has-air-map="true"' in text

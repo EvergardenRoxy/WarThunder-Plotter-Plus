@@ -6,7 +6,8 @@ function makeViewer(context, properties = {}) {
     return Object.assign(Object.create(context.window.MatchViewer.prototype), {
         matchId: 1,
         isLive: false,
-        isAirMap: false,
+        battleType: 'ground',
+        mapKind: 'ground',
         timelinePosition: 1,
         lastTimestamp: 0,
         maxTimestamp: 0,
@@ -49,9 +50,9 @@ test('discards out-of-range display coordinates while advancing the cursor', asy
         }),
     });
     await viewer._loadPositions();
-    assert.equal(viewer.positions.length, 1);
     assert.equal(viewer.positionCount, 3);
     assert.equal(viewer.tracks.length, 1);
+    assert.equal(viewer.tracks[0].points.length, 1);
     assert.equal(viewer.lastTimestamp, 1501);
 });
 
@@ -181,4 +182,35 @@ test('speed clamps to 5x-40x and is saved', () => {
     viewer.setSpeed(1);
     assert.equal(viewer.speed, 5);
     assert.equal(JSON.parse(context.localStorage.getItem('wtp.viewer')).speed, 5);
+});
+
+test('air map uses raw coordinates of air-view points only', () => {
+    const base = { type: 'ground_model', color: '#174DFF', timestamp: 0 };
+    const viewer = makeViewer(load('tracks.js', 'viewer.js'), {
+        battleType: 'air_in_ground',
+        mapKind: 'air',
+        positions: [
+            { ...base, x: 0.3, y: 0.4, is_player_air_view: 1 },
+            { ...base, x: 0.8, y: 0.8, is_player_air_view: 0 },
+        ],
+    });
+    viewer._buildTracks();
+    assert.equal(viewer.tracks.length, 1);
+    assert.deepEqual([viewer.tracks[0].points[0].x, viewer.tracks[0].points[0].y], [0.3, 0.4]);
+    assert.equal(viewer.isAirMap, true);
+});
+
+test('ground map prefers ground coordinates and drops unmapped air-view points', () => {
+    const base = { type: 'ground_model', color: '#174DFF', timestamp: 0, is_player_air_view: 1 };
+    const viewer = makeViewer(load('tracks.js', 'viewer.js'), {
+        battleType: 'air_in_ground',
+        positions: [
+            { ...base, x: 0.3, y: 0.4, x_ground: 0.6, y_ground: 0.7 },
+            { ...base, x: 0.9, y: 0.9 },
+        ],
+    });
+    viewer._buildTracks();
+    assert.equal(viewer.tracks.length, 1);
+    assert.deepEqual([viewer.tracks[0].points[0].x, viewer.tracks[0].points[0].y], [0.6, 0.7]);
+    assert.equal(viewer.isAirMap, false);
 });

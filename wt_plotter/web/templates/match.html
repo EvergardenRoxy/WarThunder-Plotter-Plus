@@ -36,7 +36,7 @@
         <p class="capture-stopped" id="capture-stopped" role="status" hidden>{{ t('viewer.capture_stopped') }}</p>
         {% endif %}
         <div class="canvas-wrapper">
-            <canvas id="mapCanvas" data-match-id="{{ match.id }}" data-live="{{ 'true' if is_live else 'false' }}" data-battle-type="{{ match.battle_type }}" title="{{ t('viewer.zoom_hint') }}"></canvas>
+            <canvas id="mapCanvas" data-match-id="{{ match.id }}" data-live="{{ 'true' if is_live else 'false' }}" data-battle-type="{{ match.battle_type }}" data-has-air-map="{{ 'true' if match.air_map else 'false' }}" data-default-map="{{ default_map }}" title="{{ t('viewer.zoom_hint') }}"></canvas>
         </div>
         {% if not is_live %}
         <div class="playbar">
@@ -51,7 +51,15 @@
     </section>
     <aside class="sidebar">
         <div class="panel">
-            <h3>{{ t('viewer.statistics') }}</h3>
+            <div class="panel-head">
+                <h3>{{ t('viewer.statistics') }}</h3>
+                {% if match.air_map %}
+                <div class="map-kind" id="map-kind" role="group" aria-label="{{ t('viewer.map_kind') }}">
+                    <button type="button" data-map-kind="ground">{{ t('viewer.map_ground') }}</button>
+                    <button type="button" data-map-kind="air">{{ t('viewer.map_air') }}</button>
+                </div>
+                {% endif %}
+            </div>
             <div id="stats">{{ t('viewer.loading') }}</div>
         </div>
         <div class="panel">

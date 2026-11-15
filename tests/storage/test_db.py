@@ -116,3 +116,13 @@ def test_reads_upstream_db(tmp_path):
     shutil.copyfile(UPSTREAM_DB, path)
     with closing(db.connect(path)) as conn:
         assert isinstance(db.get_all_matches(conn), list)
+
+
+def test_first_sortie_army(conn):
+    match_id = db.start_match(conn, "hash")
+    placeholders = ("", "dummy_plane")
+    db.add_tick(conn, match_id, db.TickRecord(0.0, "air", "dummy_plane", 1, 0), [POSITION])
+    assert db.first_sortie_army(conn, match_id, placeholders) is None
+    for timestamp, army, vehicle in ((1.0, "tank", ""), (2.0, "air", "f-4s"), (3.0, "tank", "germ_hummel")):
+        db.add_tick(conn, match_id, db.TickRecord(timestamp, army, vehicle, 0, 0), [POSITION])
+    assert db.first_sortie_army(conn, match_id, placeholders) == "air"
