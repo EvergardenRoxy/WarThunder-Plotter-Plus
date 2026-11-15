@@ -24,6 +24,8 @@
 
 - 2026-11-15 · 2026-11-15-viewer-readability.md · Task 1 · `c750c8668f9b31c819b5f6dac32ce3fcb582c99f` · 按防空图标、占领点坐标变化和上一帧视角判定空中视角；全量测试 160 项通过，2 项跳过。
 
+- 2026-11-15 · 2026-11-15-viewer-readability.md · Task 2 · `c30630c1c2129661dba716711f2b8ecb0aa94e92` · 加入轨迹串联、聚类和时间查找；7 个 Node 用例由 pytest 调用，全量测试 161 项通过，2 项跳过。
+
 ## 偏离
 
 - 2026-11-15 · Task 1 Step 2：`py -3.11` 返回 `No installed Python found!`，改用本机已安装的 Python 3.11.9 创建项目 `.venv`，其余 Python 命令均在该环境内执行。
@@ -35,6 +37,8 @@
 
 - 2026-11-15 · 2026-11-15-viewer-readability.md · Task 2 Step 1 · Windows 上 Node v24.22.1 将显式传入的 tests/js/ 当成模块入口，报 Cannot find module。pytest 改为枚举 tests/js/*.test.cjs 并逐个传给 node --test，继续在缺少 Node 时直接报错。
 
+- 2026-11-15 · 2026-11-15-viewer-readability.md · Task 3 Step 3 · D3 的颜色规则会把 #888888 归到 squad，与用例冲突。将中性灰加入最近色参考，与其他标记的绘制色一致。为承接 D1，地面图按 is_player_air_view 隐藏未换算坐标，载具类型只用于状态数据。
+
 ## 阻塞
 
 ## 待人工复核
@@ -43,6 +47,8 @@
 - 2026-11-15 · Task 4 · 上游目录未提供 `data/matches.db`，按计划跳过真实旧库读入测试。建表 SQL 已与上游逐字核对。
 - 2026-11-15 · Task 5 · 未找到上游真实比赛录像，回放测试没有可用样本。
 - 2026-11-15 · Task 8 · 更新器已验证版本选择、EXE 选择及断网行为。真实发布下载和替换运行中的 EXE 留待有发布资产时复核。
+
+- 2026-11-15 · 2026-11-15-viewer-readability.md · Task 3 Step 6 · 4 场样本的比赛页、轨迹脚本和第 4 场位置接口均返回 HTTP 200；地图轨迹、标记与配色仍需在浏览器中逐场目视复核。
 
 ## 移植验证
 

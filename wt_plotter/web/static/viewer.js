@@ -1,3 +1,22 @@
+const VIEW_STYLE = Object.freeze({
+    teamColors: { player: '#faC81E', squad: '#67D756', ally: '#174DFF', enemy: '#fa0C00', other: '#888888' },
+    ownerColors: { ally: '#174DFF', enemy: '#fa0C00', neutral: '#ffffff' },
+    maxColorDistance: 160,
+    link: { ground: { maxStep: 0.03, maxGap: 3000 }, air: { maxStep: 0.06, maxGap: 3000 } },
+    aliveWindow: 2000,
+    deathMinPoints: 20,
+    poiClusterRadius: 0.02,
+    mapDim: 0.25,
+    trackOrder: ['ally', 'other', 'enemy', 'squad', 'player'],
+    lineWidth: { player: 3, squad: 2.5, enemy: 2, ally: 1.5, other: 1.5 },
+    lineAlpha: { player: 1, squad: 1, enemy: 1, ally: 0.6, other: 0.6 },
+    haloWidth: 2,
+    haloColor: 'rgba(0,0,0,0.55)',
+    current: { radius: 3, border: 1.5, playerScale: 1.4, playerRing: 2 },
+    deathSize: 2.5,
+    capture: { radius: 12, alpha: 0.3, border: 2 },
+    respawn: { size: 8, alpha: 0.5, border: 1.5 },
+});
 
 class MatchViewer {
     constructor(canvasId, matchId, { isLive = false, isAirMap = false, pollInterval = 500, onRender } = {}) {
@@ -9,7 +28,9 @@ class MatchViewer {
         this.pollInterval = pollInterval;
         this.onRender = onRender;
         this.positions = [];
+        this.positionCount = 0;
         this.pois = [];
+        this.tracks = [];
         this.mapImage = null;
         this.lastTimestamp = 0;
         this.pollTimer = null;
@@ -35,6 +56,7 @@ class MatchViewer {
         this.blipSize = 1.5;
         this.timelinePosition = 1.0;
         this.maxTimestamp = 0;
+        this._resize();
         this._loadMap();
         this._setupInteractions();
         if (this.isLive) {
@@ -43,17 +65,22 @@ class MatchViewer {
             this._loadPositions();
         }
         window.addEventListener('resize', () => this._resize());
-        requestAnimationFrame(() => {
-            this._resize();
-            this._render();
-        });
     }
 
     _resize() {
         const container = this.canvas.parentElement;
-        const size = Math.min(container.clientWidth, container.clientHeight, 1500);
-        this.canvas.width = size;
-        this.canvas.height = size;
+        const padding = getComputedStyle(container);
+        const width = container.clientWidth - parseFloat(padding.paddingLeft) - parseFloat(padding.paddingRight);
+        const height = container.clientHeight - parseFloat(padding.paddingTop) - parseFloat(padding.paddingBottom);
+        const size = Math.min(width, height, 1500);
+        this.width = size;
+        this.height = size;
+        this.dpr = window.devicePixelRatio || 1;
+        this.canvas.width = Math.round(size * this.dpr);
+        this.canvas.height = Math.round(size * this.dpr);
+        this.canvas.style.width = `${size}px`;
+        this.canvas.style.height = `${size}px`;
+        this._clampPan();
         this._render();
     }
 
@@ -111,8 +138,8 @@ class MatchViewer {
     }
 
     _clampPan() {
-        const w = this.canvas.width;
-        const h = this.canvas.height;
+        const w = this.width;
+        const h = this.height;
         const scaledW = w * this.zoom;
         const scaledH = h * this.zoom;
         const margin = 50;
@@ -138,8 +165,8 @@ class MatchViewer {
     zoomIn() {
         const newZoom = Math.min(this.maxZoom, this.zoom * 1.25);
         if (newZoom !== this.zoom) {
-            const cx = this.canvas.width / 2;
-            const cy = this.canvas.height / 2;
+            const cx = this.width / 2;
+            const cy = this.height / 2;
             const zoomRatio = newZoom / this.zoom;
             this.panX = cx - (cx - this.panX) * zoomRatio;
             this.panY = cy - (cy - this.panY) * zoomRatio;
@@ -153,8 +180,8 @@ class MatchViewer {
     zoomOut() {
         const newZoom = Math.max(this.minZoom, this.zoom / 1.25);
         if (newZoom !== this.zoom) {
-            const cx = this.canvas.width / 2;
-            const cy = this.canvas.height / 2;
+            const cx = this.width / 2;
+            const cy = this.height / 2;
             const zoomRatio = newZoom / this.zoom;
             this.panX = cx - (cx - this.panX) * zoomRatio;
             this.panY = cy - (cy - this.panY) * zoomRatio;
@@ -181,64 +208,41 @@ class MatchViewer {
     async _loadPositions() {
         try {
             const resp = await fetch(`/api/match/${this.matchId}/positions?since=${this.lastTimestamp}`);
-            const data = await resp.json();
-            const ticks = data.ticks || [];
-            const positions = data.positions || [];
+            const { ticks = [], positions = [] } = await resp.json();
 
             if (positions.length > 0) {
-                const tickMap = new Map();
-                for (const tick of ticks) {
-                    tickMap.set(tick.id, tick);
-                }
-                const processed = positions.map(pos => {
+                const tickMap = new Map(ticks.map(tick => [tick.id, tick]));
+                for (const pos of positions) {
                     const tick = tickMap.get(pos.tick_id);
-                    if (!tick) {
-                        return null;
-                    }
+                    if (!tick) continue;
+
+                    this.maxTimestamp = Math.max(this.maxTimestamp, tick.timestamp);
+                    this.lastTimestamp = Math.max(this.lastTimestamp, tick.timestamp + 1);
+                    if (!pos.is_poi) this.positionCount++;
+
+                    const x = pos.x_ground ?? pos.x;
+                    const y = pos.y_ground ?? pos.y;
+                    if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) continue;
                     const merged = {
                         ...pos,
+                        x,
+                        y,
                         timestamp: tick.timestamp,
                         army_type: tick.army_type,
                         vehicle_type: tick.vehicle_type,
                         is_player_air: tick.is_player_air,
-                        is_player_air_view: tick.is_player_air_view
+                        is_player_air_view: tick.is_player_air_view,
                     };
-                    if (merged.x_ground !== null && merged.x_ground !== undefined &&
-                        merged.y_ground !== null && merged.y_ground !== undefined) {
-                        return {
-                            ...merged,
-                            x: merged.x_ground,
-                            y: merged.y_ground,
-                            x_original: merged.x,
-                            y_original: merged.y
-                        };
-                    }
-                    return merged;
-                }).filter(Boolean);
-                // 逐条累计最大时间戳；整场位置太多，不能展开成函数参数。
-                let maxTs = -Infinity;
-                for (const pos of processed) {
-                    if (pos.is_poi) {
-                        this.pois.push(pos);
-                    } else {
-                        this.positions.push(pos);
-                    }
-                    if (pos.timestamp > maxTs) maxTs = pos.timestamp;
+                    if (pos.is_poi) this.pois.push(merged);
+                    else this.positions.push(merged);
                 }
-                if (maxTs >= this.lastTimestamp) {
-                    this.lastTimestamp = maxTs + 1;
-                }
-                if (maxTs > this.maxTimestamp) {
-                    this.maxTimestamp = maxTs;
-                }
-
+                this._buildTracks();
                 this._render();
             }
-            this._updateStats();
         } catch (e) {
             console.error('Failed to load positions:', e);
-            this._updateStats();
         }
+        this._updateStats();
     }
 
     _startPolling() {
@@ -299,255 +303,247 @@ class MatchViewer {
 
     _updateStats() {
         const statsEl = document.getElementById('stats');
-        if (statsEl) {
-            const total = this.positions.length;
-            const poiCount = new Set(this.pois.map(p => `${p.x.toFixed(3)},${p.y.toFixed(3)}`)).size;
-            let armyType = 'tank';
-            let vehicleType = '';
+        if (!statsEl) return;
 
-            console.debug(`Updating stats. isLive: ${this.isLive}, timelinePosition: ${this.timelinePosition}, positions count: ${this.positions.length}`);
-            if (this.isLive) {
-                console.debug(`Live army type: ${this.liveArmyType}, vehicle type: ${this.liveVehicleType}`);
-                armyType = this.liveArmyType || 'tank';
-                vehicleType = this.liveVehicleType || '';
-                if ((!vehicleType || !armyType) && this.positions.length > 0) {
-                    const latest = this.positions[this.positions.length - 1];
-                    armyType = armyType || latest.army_type || 'tank';
-                    vehicleType = vehicleType || latest.vehicle_type || '';
-                }
-            } else if (this.positions.length > 0) {
-                if (this.timelinePosition >= 1.0) {
-                    armyType = this.positions[this.positions.length - 1].army_type || 'tank';
-                    vehicleType = this.positions[this.positions.length - 1].vehicle_type || '';
-                } else {
-                    const cutoffTime = this.maxTimestamp * this.timelinePosition;
-                    for (let i = this.positions.length - 1; i >= 0; i--) {
-                        if (this.positions[i].timestamp <= cutoffTime) {
-                            armyType = this.positions[i].army_type || 'tank';
-                            vehicleType = this.positions[i].vehicle_type || '';
-                            break;
-                        }
-                    }
-                }
-            }
-            let vehicleName = '';
-            if (vehicleType) {
-                const parts = vehicleType.split('/');
-                vehicleName = parts[parts.length - 1].replace(/_/g, ' ');
-            }
-
-            const mode = document.createElement('span');
-            mode.className = armyType === 'air' ? 'army-status air-info' : 'army-status';
-            mode.textContent = armyType === 'air' ? t('viewer.air_view') : t('viewer.ground');
-            statsEl.replaceChildren(t('viewer.stats', { positions: total, pois: poiCount }), document.createElement('br'), mode);
-            if (vehicleName) {
-                const vehicle = document.createElement('span');
-                vehicle.className = 'vehicle-name';
-                vehicle.textContent = vehicleName;
-                statsEl.append(document.createElement('br'), vehicle);
-            }
+        const index = window.Tracks.lastIndexAtMost(this.positions, this._cutoff(), pos => pos.timestamp);
+        const latest = this.positions[index];
+        const armyType = (this.isLive ? this.liveArmyType : latest?.army_type) || 'tank';
+        const vehicleType = (this.isLive ? this.liveVehicleType : '') || latest?.vehicle_type || '';
+        const mode = document.createElement('span');
+        mode.className = armyType === 'air' ? 'army-status air-info' : 'army-status';
+        mode.textContent = armyType === 'air' ? t('viewer.air_view') : t('viewer.ground');
+        const counts = t('viewer.stats', { positions: this.positionCount, pois: this.poiCount });
+        statsEl.replaceChildren(counts, document.createElement('br'), mode);
+        if (vehicleType) {
+            const vehicle = document.createElement('span');
+            vehicle.className = 'vehicle-name';
+            vehicle.textContent = vehicleType.split('/').at(-1).replace(/_/g, ' ');
+            statsEl.append(document.createElement('br'), vehicle);
         }
     }
 
     _categorize(pos) {
         const type = pos.type.toLowerCase();
-        const icon = (pos.icon || '').toLowerCase();
-        const color = (pos.color || '#FFFFFF').toUpperCase();
         if (type === 'capture_zone') return 'capture_zone';
         if (type.includes('respawn') || type.includes('airfield')) return 'respawn';
-        const rgb = this._parseColor(color);
-        if (rgb) {
-            const [r, g, b] = rgb;
-            if (r > 200 && g > 150 && b < 100) {
-                return 'player';
-            }
-            if (g > 180 && r < 150 && b < 150) {
-                return 'squad';
-            }
-            if (r > 200 && g < 100 && b < 100) {
-                return 'enemy';
-            }
-            if (b > 200 && r < 100) {
-                return 'ally';
-            }
-        }
-        if (icon === 'player') {
-            return 'player';
-        }
-
-        return 'other';
+        return this._nearestColor(pos.color, VIEW_STYLE.teamColors, VIEW_STYLE.maxColorDistance);
     }
 
-    _parseColor(hex) {
-        if (!hex) return null;
-        hex = hex.replace('#', '');
-        if (hex.length === 3) {
-            hex = hex.split('').map(c => c + c).join('');
-        }
-        if (hex.length !== 6) return null;
-
-        const r = parseInt(hex.slice(0, 2), 16);
-        const g = parseInt(hex.slice(2, 4), 16);
-        const b = parseInt(hex.slice(4, 6), 16);
-
-        if (isNaN(r) || isNaN(g) || isNaN(b)) return null;
-        return [r, g, b];
+    _ownerColor(hex) {
+        return VIEW_STYLE.ownerColors[this._nearestColor(hex, VIEW_STYLE.ownerColors)];
     }
 
-    _shouldShow(pos) {
-        // 空战地图上的坐标本来就属于这张图，全部显示。
-        // 其它比赛里隐藏飞机，以及没有换算成地面坐标的空中视角位置。
-        if (!this.isAirMap) {
-            const isAirType = (pos.type || '').toLowerCase() === 'aircraft';
-            if (isAirType) return false;
-            const isAirView = pos.is_player_air_view || pos.is_player_air;
-            if (isAirView && (pos.x_ground === null || pos.x_ground === undefined)) {
-                return false;
+    _nearestColor(hex, palette, maxDistance = Infinity) {
+        const rgb = parseInt(hex.slice(1), 16);
+        let best = 'other';
+        let bestDistance = maxDistance ** 2;
+        for (const [name, reference] of Object.entries(palette)) {
+            const target = parseInt(reference.slice(1), 16);
+            const dr = (rgb >> 16) - (target >> 16);
+            const dg = (rgb >> 8 & 255) - (target >> 8 & 255);
+            const db = (rgb & 255) - (target & 255);
+            const distance = dr ** 2 + dg ** 2 + db ** 2;
+            if (distance <= bestDistance) {
+                best = name;
+                bestDistance = distance;
             }
         }
-
-        const cat = this._categorize(pos);
-        if (this.filters[cat] === false) return false;
-        if (!this.isLive && !pos.is_poi && this.timelinePosition < 1.0) {
-            const cutoffTime = this.maxTimestamp * this.timelinePosition;
-            if (pos.timestamp > cutoffTime) return false;
-        }
-
-        return true;
+        return best;
     }
 
-    _getCurrentPois() {
-        if (this.isLive || this.timelinePosition >= 1.0) {
-            const poiMap = new Map();
-            for (const pos of this.pois) {
-                const key = `${pos.x.toFixed(3)},${pos.y.toFixed(3)}`;
-                if (!poiMap.has(key) || pos.timestamp > poiMap.get(key).timestamp) {
-                    poiMap.set(key, pos);
-                }
-            }
-            return Array.from(poiMap.values());
-        } else {
-            const cutoffTime = this.maxTimestamp * this.timelinePosition;
-            const poiMap = new Map();
-            for (const pos of this.pois) {
-                if (pos.timestamp <= cutoffTime) {
-                    const key = `${pos.x.toFixed(3)},${pos.y.toFixed(3)}`;
-                    if (!poiMap.has(key) || pos.timestamp > poiMap.get(key).timestamp) {
-                        poiMap.set(key, pos);
-                    }
-                }
-            }
-            return Array.from(poiMap.values());
+    _isDrawable(pos) {
+        if (this.isAirMap) return true;
+        return pos.type.toLowerCase() !== 'aircraft' && (!pos.is_player_air_view || pos.x_ground != null);
+    }
+
+    _buildTracks() {
+        const grouped = new Map();
+        for (const pos of this.positions) {
+            if (!this._isDrawable(pos)) continue;
+            const category = this._categorize(pos);
+            if (!grouped.has(category)) grouped.set(category, new Map());
+            const times = grouped.get(category);
+            if (!times.has(pos.timestamp)) times.set(pos.timestamp, []);
+            times.get(pos.timestamp).push({ x: pos.x, y: pos.y });
         }
+
+        const options = this.isAirMap ? VIEW_STYLE.link.air : VIEW_STYLE.link.ground;
+        this.tracks = [];
+        for (const category of VIEW_STYLE.trackOrder) {
+            if (!grouped.has(category)) continue;
+            const frames = Array.from(grouped.get(category), ([t, points]) => ({ t, points }));
+            frames.sort((a, b) => a.t - b.t);
+            for (const points of window.Tracks.linkTracks(frames, options)) {
+                this.tracks.push({ category, points });
+            }
+        }
+    }
+
+    _cutoff() {
+        return this.isLive ? this.maxTimestamp : this.maxTimestamp * this.timelinePosition;
+    }
+
+    _getPoiClusters(cutoff) {
+        const capture = [];
+        const respawn = [];
+        for (const pos of this.pois) {
+            if (!this._isDrawable(pos)) continue;
+            if (pos.type.toLowerCase() === 'capture_zone') {
+                if (pos.timestamp <= cutoff) capture.push(pos);
+            } else {
+                respawn.push(pos);
+            }
+        }
+        const latest = group => group.reduce((a, b) => b.timestamp > a.timestamp ? b : a);
+        return {
+            capture: window.Tracks.clusterPoints(capture, VIEW_STYLE.poiClusterRadius, latest),
+            respawn: window.Tracks.clusterPoints(respawn, VIEW_STYLE.poiClusterRadius, latest),
+        };
     }
 
     _render() {
         const ctx = this.ctx;
-        const w = this.canvas.width;
-        const h = this.canvas.height;
+        const w = this.width;
+        const h = this.height;
+        ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
         ctx.fillStyle = '#1a1a1a';
         ctx.fillRect(0, 0, w, h);
         ctx.save();
         ctx.translate(this.panX, this.panY);
         ctx.scale(this.zoom, this.zoom);
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
         if (this.mapImage) {
             ctx.drawImage(this.mapImage, 0, 0, w, h);
         } else {
             ctx.strokeStyle = '#333';
             ctx.lineWidth = 1 / this.zoom;
             for (let i = 0; i <= 10; i++) {
-                const p = (i / 10) * w;
+                const fraction = i / 10;
                 ctx.beginPath();
-                ctx.moveTo(p, 0);
-                ctx.lineTo(p, h);
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.moveTo(0, p);
-                ctx.lineTo(w, p);
+                ctx.moveTo(fraction * w, 0);
+                ctx.lineTo(fraction * w, h);
+                ctx.moveTo(0, fraction * h);
+                ctx.lineTo(w, fraction * h);
                 ctx.stroke();
             }
         }
-        const currentPois = this._getCurrentPois();
-        for (const pos of currentPois) {
-            if (this._shouldShow(pos)) {
-                this._drawPOI(pos, w, h);
+        ctx.fillStyle = `rgba(0,0,0,${VIEW_STYLE.mapDim})`;
+        ctx.fillRect(0, 0, w, h);
+
+        const cutoff = this._cutoff();
+        const { capture, respawn } = this._getPoiClusters(cutoff);
+        this.poiCount = capture.length + respawn.length;
+        if (this.filters.capture_zone) {
+            for (const point of capture) this._drawPoi(point, true);
+        }
+        if (this.filters.respawn) {
+            for (const point of respawn) this._drawPoi(point, false);
+        }
+
+        const current = [];
+        const deaths = [];
+        for (const { category, points } of this.tracks) {
+            if (!this.filters[category]) continue;
+            const end = window.Tracks.lastIndexAtMost(points, cutoff, point => point.t);
+            if (end < 0) continue;
+            if (end > 0) this._drawTrack(category, points, 0, end);
+            const point = points[end];
+            if (cutoff - point.t <= VIEW_STYLE.aliveWindow) {
+                current.push({ category, point });
+            } else if (end === points.length - 1 && points.length >= VIEW_STYLE.deathMinPoints &&
+                point.t < this.maxTimestamp - VIEW_STYLE.aliveWindow) {
+                deaths.push({ category, point });
             }
         }
-        for (const pos of this.positions) {
-            if (this._shouldShow(pos)) {
-                this._drawPosition(pos, w, h);
-            }
-        }
+        for (const { category, point } of current) this._drawCurrent(category, point);
+        for (const { category, point } of deaths) this._drawDeath(category, point);
+
         ctx.restore();
         this.onRender?.(this);
     }
 
-    _drawPOI(pos, w, h) {
+    _drawTrack(category, points, start, end) {
         const ctx = this.ctx;
-        const x = pos.x * w;
-        const y = pos.y * h;
-        const type = pos.type.toLowerCase();
-
-        if (type === 'capture_zone') {
-            ctx.beginPath();
-            ctx.arc(x, y, 20, 0, Math.PI * 2);
-            ctx.fillStyle = this._hexToRgba(pos.color, 0.3);
-            ctx.fill();
-            ctx.strokeStyle = pos.color;
-            ctx.lineWidth = 2;
-            ctx.stroke();
-        } else {
-            ctx.beginPath();
-            ctx.moveTo(x, y - 3);
-            ctx.lineTo(x - 2, y + 1);
-            ctx.lineTo(x + 2, y + 1);
-            ctx.closePath();
-            ctx.fillStyle = this._hexToRgba(pos.color, 0.3);
-            ctx.fill();
-            ctx.strokeStyle = pos.color;
-            ctx.lineWidth = 1;
-            ctx.stroke();
-        }
-    }
-
-    _drawPosition(pos, w, h) {
-        const ctx = this.ctx;
-        const x = pos.x * w;
-        const y = pos.y * h;
-        let size = this.blipSize;
-        let alpha = 1.0;
         ctx.beginPath();
-        ctx.arc(x, y, size, 0, Math.PI * 2);
-        ctx.fillStyle = this._hexToRgba(pos.color, alpha);
-        ctx.fill();
+        ctx.moveTo(points[start].x * this.width, points[start].y * this.height);
+        for (let i = start + 1; i <= end; i++) {
+            ctx.lineTo(points[i].x * this.width, points[i].y * this.height);
+        }
+        this._strokeTrack(category, VIEW_STYLE.lineAlpha[category]);
     }
 
-    _hexToRgba(hex, alpha) {
-        if (!hex || hex === '#FFFFFF' || hex === '#ffffff') {
-            return `rgba(255, 255, 255, ${alpha})`;
-        }
-        const colors = {
-            'blue': '#4444ff',
-            'red': '#ff4444',
-            'green': '#44ff44',
-            'yellow': '#ffff44',
-            'white': '#ffffff',
-            'gray': '#888888'
-        };
-        if (colors[hex.toLowerCase()]) {
-            hex = colors[hex.toLowerCase()];
-        }
-        if (hex.startsWith('#')) {
-            hex = hex.slice(1);
-        }
-        if (hex.length === 3) {
-            hex = hex.split('').map(c => c + c).join('');
-        }
+    _strokeTrack(category, alpha) {
+        const ctx = this.ctx;
+        const width = VIEW_STYLE.lineWidth[category];
+        ctx.lineWidth = (width + VIEW_STYLE.haloWidth) / this.zoom;
+        ctx.strokeStyle = VIEW_STYLE.haloColor;
+        ctx.stroke();
+        ctx.lineWidth = width / this.zoom;
+        ctx.strokeStyle = VIEW_STYLE.teamColors[category];
+        ctx.globalAlpha = alpha;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+    }
 
-        const r = parseInt(hex.slice(0, 2), 16);
-        const g = parseInt(hex.slice(2, 4), 16);
-        const b = parseInt(hex.slice(4, 6), 16);
-        return `rgba(${isNaN(r) ? 255 : r}, ${isNaN(g) ? 255 : g}, ${isNaN(b) ? 255 : b}, ${alpha})`;
+    _drawPoi(point, isCapture) {
+        const ctx = this.ctx;
+        const x = point.x * this.width;
+        const y = point.y * this.height;
+        const style = isCapture ? VIEW_STYLE.capture : VIEW_STYLE.respawn;
+        const color = this._ownerColor(point.color);
+        ctx.beginPath();
+        if (isCapture) {
+            ctx.arc(x, y, style.radius / this.zoom, 0, Math.PI * 2);
+        } else {
+            const size = style.size / this.zoom;
+            ctx.rect(x - size / 2, y - size / 2, size, size);
+        }
+        ctx.lineWidth = (style.border + VIEW_STYLE.haloWidth) / this.zoom;
+        ctx.strokeStyle = VIEW_STYLE.haloColor;
+        ctx.stroke();
+        ctx.globalAlpha = style.alpha;
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = style.border / this.zoom;
+        ctx.strokeStyle = color;
+        ctx.stroke();
+    }
+
+    _drawCurrent(category, point) {
+        const ctx = this.ctx;
+        const style = VIEW_STYLE.current;
+        const x = point.x * this.width;
+        const y = point.y * this.height;
+        const radius = this.blipSize * style.radius * (category === 'player' ? style.playerScale : 1) / this.zoom;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = VIEW_STYLE.teamColors[category];
+        ctx.fill();
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = style.border / this.zoom;
+        ctx.stroke();
+        if (category === 'player') {
+            ctx.beginPath();
+            ctx.arc(x, y, radius + (style.border + style.playerRing) / 2 / this.zoom, 0, Math.PI * 2);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = style.playerRing / this.zoom;
+            ctx.stroke();
+        }
+    }
+
+    _drawDeath(category, point) {
+        const ctx = this.ctx;
+        const x = point.x * this.width;
+        const y = point.y * this.height;
+        const half = this.blipSize * VIEW_STYLE.deathSize / 2 / this.zoom;
+        ctx.beginPath();
+        ctx.moveTo(x - half, y - half);
+        ctx.lineTo(x + half, y + half);
+        ctx.moveTo(x + half, y - half);
+        ctx.lineTo(x - half, y + half);
+        this._strokeTrack(category, 1);
     }
 
     setFilter(category, enabled) {

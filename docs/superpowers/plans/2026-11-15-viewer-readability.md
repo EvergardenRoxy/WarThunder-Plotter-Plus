@@ -237,18 +237,18 @@ window.Tracks = { linkTracks, clusterPoints, lastIndexAtMost };
 - 保持不变：`MatchViewer` 构造参数，以及 `app.js` 调用的公开方法（`zoomIn` `zoomOut` `resetView` `setFilter` `setBlipSize` `setTimeline` `getTimelineMax` `formatTime` `destroy`）、属性 `timelinePosition`
 - Produces（供测试和 Task 4 使用）：`_categorize(pos)`、`_ownerColor(hex)`、`_buildTracks()`、`this.tracks`、`_cutoff()`
 
-- [ ] **Step 1:** 写失败测试 `tests/js/viewer.test.cjs`。用 `load('tracks.js', 'viewer.js')` 载入，参照 `reproduce.cjs`，以 `Object.create(MatchViewer.prototype)` 构造对象，避免执行构造函数。
+- [x] **Step 1:** 写失败测试 `tests/js/viewer.test.cjs`。用 `load('tracks.js', 'viewer.js')` 载入，参照 `reproduce.cjs`，以 `Object.create(MatchViewer.prototype)` 构造对象，避免执行构造函数。
   - `_categorize`：`#faC81E` → player，`#67D756` → squad，`#174DFF`、`#1839A7`、`#043FFF` → ally，`#fa0C00`、`#f00C00` → enemy，`#888888` → other，`type: 'capture_zone'` → capture_zone，`type: 'respawn_base_tank'` → respawn。
   - `_ownerColor`：`#feD0C9` → `#ffffff`，`#3564FE` → `#174DFF`，`#fb554B` → `#fa0C00`。
   - 载入过滤：用桩 `fetch` 返回一个 bundle，含 3 个非 POI 点，显示坐标分别为 (0.5, 0.5)、(1.4, 0.5)、`x_ground: -0.2`。调用 `_loadPositions()` 后 `positions.length === 1`。
   - `_buildTracks`：两帧，各有一个友军点 (0.5, 0.5)、(0.505, 0.5)，以及一个玩家点 → `tracks` 里有 1 条 ally 轨迹（2 个点）和 1 条 player 轨迹。
   - `_cutoff`：`isLive` 为假、`maxTimestamp = 10000`、`timelinePosition = 0.5` → 5000；`isLive` 为真 → 10000。
-- [ ] **Step 2:** 跑测试，确认失败。
-- [ ] **Step 3:** 按设计 D3 的第 1～14 条实现，常量集中写在 `VIEW_STYLE` 里。
-- [ ] **Step 4:** `styles.css`：去掉 `.canvas-wrapper` 的 `min-height: 800px`，改为 `min-height: 60vh`；去掉 `#mapCanvas` 的 `height: auto`，画布尺寸由脚本设定。
-- [ ] **Step 5:** 跑全量测试至全绿。
-- [ ] **Step 6:** 冒烟检查：把 `dist/data/matches.db*` 复制到系统临时目录下的新文件夹（例如 `$env:TEMP\wt_viewer_check\`），在该数据上启动服务。启动方式查 `wt_plotter/cli.py` 与 `config.py`，看服务如何指定数据目录；若不支持指定，就用 Flask 测试客户端加 `create_app` 指向这份副本。确认 `/match/1` 到 `/match/4`、`/static/tracks.js`、`/api/match/4/positions?since=0` 都返回 200。在 `PROGRESS.md` 的“待人工复核”记一条：用户需在浏览器里逐场查看 4 场比赛的效果。
-- [ ] **Step 7:** 提交：`feat: draw linked tracks with live markers and clustered pois`。
+- [x] **Step 2:** 跑测试，确认失败。
+- [x] **Step 3:** 按设计 D3 的第 1～14 条实现，常量集中写在 `VIEW_STYLE` 里。
+- [x] **Step 4:** `styles.css`：去掉 `.canvas-wrapper` 的 `min-height: 800px`，改为 `min-height: 60vh`；去掉 `#mapCanvas` 的 `height: auto`，画布尺寸由脚本设定。
+- [x] **Step 5:** 跑全量测试至全绿。
+- [x] **Step 6:** 冒烟检查：把 `dist/data/matches.db*` 复制到系统临时目录下的新文件夹（例如 `$env:TEMP\wt_viewer_check\`），在该数据上启动服务。启动方式查 `wt_plotter/cli.py` 与 `config.py`，看服务如何指定数据目录；若不支持指定，就用 Flask 测试客户端加 `create_app` 指向这份副本。确认 `/match/1` 到 `/match/4`、`/static/tracks.js`、`/api/match/4/positions?since=0` 都返回 200。在 `PROGRESS.md` 的“待人工复核”记一条：用户需在浏览器里逐场查看 4 场比赛的效果。
+- [x] **Step 7:** 提交：`feat: draw linked tracks with live markers and clustered pois`。
 
 ### Task 4: 轨迹长度与回放播放
 
