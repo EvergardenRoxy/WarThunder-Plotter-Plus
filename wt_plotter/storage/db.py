@@ -184,6 +184,11 @@ def end_match(conn: sqlite3.Connection, match_id: int) -> None:
         )
 
 
+def set_map_hash(conn: sqlite3.Connection, match_id: int, map_hash: str) -> None:
+    with conn:
+        conn.execute("UPDATE matches SET map_hash = ? WHERE id = ?", (map_hash, match_id))
+
+
 def set_air_map(conn: sqlite3.Connection, match_id: int, air_map_hash: str) -> None:
     with conn:
         conn.execute("UPDATE matches SET air_map_hash = ? WHERE id = ?", (air_map_hash, match_id))

@@ -6,7 +6,7 @@ from sqlite3 import Connection
 
 from wt_plotter.capture.air_transform import fit_air_transform, to_ground
 from wt_plotter.config import CAPTURE_DEFAULTS, CAPTURE_FILTERS, CAPTURE_SETTINGS
-from wt_plotter.maps.dhash import compute_dhash
+from wt_plotter.maps.dhash import compute_dhash, is_map_loaded
 from wt_plotter.maps.lookup import lookup_map
 from wt_plotter.maps.table import BattleType, MapInfo, UNKNOWN_MAP
 from wt_plotter.storage import db
@@ -18,6 +18,8 @@ class _MatchState:
     started_at: float = 0.0
     map_hash: str = ""
     map_info: MapInfo = UNKNOWN_MAP
+    # 开局拿到的是没画完的底图，之后每轮重取直到画完。
+    map_pending: bool = False
     air_map_hash: str = ""
     invalid_since: float | None = None
     nuke_detected: bool = False
@@ -51,9 +53,9 @@ class MatchTracker:
             return
 
         if self.match_id is None:
-            image = self.fetch_map_image()
-            map_hash = compute_dhash(image) if image is not None else ""
-            self._start_match(now, image, map_hash, lookup_map(map_hash))
+            self._start_match(now, self.fetch_map_image())
+        elif self._state.map_pending:
+            self._retry_map_image()
         self._state.invalid_since = None
         if objects:
             self._capture_positions(now, indicators or {}, objects)
@@ -82,10 +84,26 @@ class MatchTracker:
             db.end_match(self.conn, self.match_id)
             self._state = _MatchState()
 
-    def _start_match(self, now: float, image: bytes | None, map_hash: str, map_info: MapInfo) -> None:
-        if image is not None:
+    def _start_match(self, now: float, image: bytes | None) -> None:
+        loaded = image is not None and is_map_loaded(image)
+        map_hash = compute_dhash(image) if loaded else ""
+        map_info = lookup_map(map_hash)
+        if loaded:
             self._save_map_image(image, map_hash, map_info)
-        self._state = _MatchState(db.start_match(self.conn, map_hash), now, map_hash, map_info)
+        self._state = _MatchState(
+            db.start_match(self.conn, map_hash), now, map_hash, map_info, map_pending=image is not None and not loaded,
+        )
+
+    def _retry_map_image(self) -> None:
+        image = self.fetch_map_image()
+        if image is None or not is_map_loaded(image):
+            return
+        state = self._state
+        state.map_hash = compute_dhash(image)
+        state.map_info = lookup_map(state.map_hash)
+        state.map_pending = False
+        self._save_map_image(image, state.map_hash, state.map_info)
+        db.set_map_hash(self.conn, state.match_id, state.map_hash)
 
     def _handle_invalid_match(self, now: float) -> None:
         state = self._state
@@ -96,7 +114,7 @@ class MatchTracker:
             if current.map_id == "no_map":
                 self.end_match()
                 return
-            if map_hash != state.map_hash:
+            if map_hash != state.map_hash and is_map_loaded(image):
                 if (
                     state.map_info.battle_type in (BattleType.GROUND, BattleType.NAVAL)
                     and current.battle_type == BattleType.AIR
@@ -109,7 +127,7 @@ class MatchTracker:
                     state.invalid_since = None
                     return
                 self.end_match()
-                self._start_match(now, image, map_hash, current)
+                self._start_match(now, image)
                 return
 
         if state.invalid_since is None:
@@ -201,7 +219,7 @@ class MatchTracker:
         if state.air_map_hash or state.map_info.battle_type == BattleType.AIR:
             return
         image = self.fetch_map_image()
-        if image is None:
+        if image is None or not is_map_loaded(image):
             return
         map_hash = compute_dhash(image)
         if map_hash == state.map_hash:

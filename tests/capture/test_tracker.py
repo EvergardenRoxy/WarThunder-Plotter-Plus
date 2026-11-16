@@ -325,3 +325,37 @@ def test_empty_first_batch_primes(setup, conn, obj):
     tracker_.record_damage(100.5, [])
     tracker_.record_damage(101.0, [_damage(1)])
     assert len(_events(conn)) == 1
+
+
+def half_loaded(png: bytes) -> bytes:
+    # 模拟游戏刚进图：上半部分还是全黑。
+    with Image.open(BytesIO(png)) as image:
+        image = image.convert("RGB")
+    image.paste((0, 0, 0), (0, 0, image.width, image.height // 2))
+    buffer = BytesIO()
+    image.save(buffer, "PNG")
+    return buffer.getvalue()
+
+
+def test_half_loaded_map_waits_for_full_image(setup, conn, map_png, obj):
+    match, fetch, maps_dir = setup
+    fetch.return_value = half_loaded(map_png(GROUND))
+    match.tick(0, True, None, [obj(0.5, 0.5)])
+    assert db.get_active_match(conn).map_hash == ""
+    assert not maps_dir.exists()
+    fetch.return_value = map_png(GROUND)
+    match.tick(1, True, None, [obj(0.5, 0.5)])
+    assert lookup.lookup_map(db.get_active_match(conn).map_hash).map_id == GROUND
+    assert (maps_dir / f"{GROUND}.png").read_bytes() == fetch.return_value
+    match.tick(2, True, None, None)
+    assert fetch.call_count == 2
+
+
+def test_half_loaded_map_does_not_split_match(setup, map_png):
+    match, fetch, _ = setup
+    fetch.return_value = map_png(GROUND)
+    match.tick(0, True, None, None)
+    match_id = match.match_id
+    fetch.return_value = half_loaded(map_png(AIR))
+    match.tick(1, False, None, None)
+    assert match.match_id == match_id

@@ -2,6 +2,10 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.4.3
+
+- Fixed black or half-black maps. At the start of a match the game sometimes returns a map image that is not fully drawn yet; that image was saved and also made the map show as unknown or "Unknownmap". The recorder now waits for the full image before recording the map, and the live page picks it up as soon as it arrives. Matches already recorded with a black map cannot be repaired.
+
 ## 0.4.2
 
 - Trails now fade continuously. They are no longer stroked in 20 bands, so the dark dots at the joints and the visible brightness steps are gone.

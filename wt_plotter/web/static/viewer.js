@@ -361,6 +361,8 @@ class MatchViewer {
     async _poll() {
         if (this.isLive) await Promise.all([this._loadPositions(), this._loadEvents()]);
         await this._checkMatchStatus();
+        // 开局时底图可能还没画完，服务端拿到完整底图前一直重试。
+        if (this.isLive && !this.mapImage) this._loadMap();
         if (this.polling) {
             this.pollTimer = setTimeout(() => this._poll(), this.pollInterval);
         }

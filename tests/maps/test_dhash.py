@@ -1,10 +1,12 @@
 from dataclasses import replace
+from io import BytesIO
 
+from PIL import Image
 import pytest
 
 from wt_plotter.config import PATHS
 from wt_plotter.maps import lookup
-from wt_plotter.maps.dhash import compute_dhash
+from wt_plotter.maps.dhash import compute_dhash, is_map_loaded
 from wt_plotter.maps.table import MAPS
 
 
@@ -25,3 +27,17 @@ def test_bundled_maps_resolve(path, monkeypatch, tmp_path):
 
 def test_length():
     assert len(compute_dhash(MAP_IMAGES[0].read_bytes())) == len(next(iter(MAPS)))
+
+
+@pytest.mark.parametrize("path", MAP_IMAGES, ids=lambda path: path.stem)
+def test_bundled_maps_are_loaded(path):
+    assert is_map_loaded(path.read_bytes())
+
+
+def test_blank_top_is_not_loaded():
+    with Image.open(MAP_IMAGES[0]) as image:
+        image = image.convert("RGB")
+    image.paste((0, 0, 0), (0, 0, image.width, image.height // 3))
+    buffer = BytesIO()
+    image.save(buffer, "PNG")
+    assert not is_map_loaded(buffer.getvalue())

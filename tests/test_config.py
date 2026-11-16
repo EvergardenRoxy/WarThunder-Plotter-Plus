@@ -11,7 +11,7 @@ from wt_plotter.config import (
 
 
 def test_version():
-    assert wt_plotter.__version__ == "0.4.2"
+    assert wt_plotter.__version__ == "0.4.3"
 
 
 def test_paths_under_data():
