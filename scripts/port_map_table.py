@@ -12,6 +12,14 @@ NAMES_PATH = ROOT / "tests" / "fixtures" / "map_names_en.json"
 LOCAL_MAPS = [
     # 2026-11-15 采集的 match 5，对应录像的关卡为 avg_krymsk（krymsk_dom）；游戏更新后的地面图。
     ("33d843f98ff212cce719ce03248de199430f4e1f91b356632bb4e5680", "avg_krymsk_tankmap", "GROUND", "krymsk"),
+    # 2026-11-15～16 采集的 match 8、14、16、18、19，按保存时间对应的录像关卡核对。
+    ("a4ca49a79e4e39bcab3a1ef1ede3f7c3cf05fe39de335ecf6cf0c9db8", "avg_karelia_forest_a_tankmap", "GROUND", "karelia forest a"),
+    ("1b971320976036323c45dc56d88da50c622ac4238a4f3136619cf1398", "avg_european_fortress_tankmap", "GROUND", "european fortress"),
+    # 上游表没有 Falklands 的地面图，map_id 按同类命名新增。
+    ("1b0d52920d649d885c90f920fec0b6c0ed0199365a497253e295a11e0", "avg_falklands_tankmap", "GROUND", "falklands"),
+    ("fc29b826f90db0165026c02951f1e3b287f91fe51de53b6539c8b3980", "avg_ireland_tankmap", "GROUND", "ireland"),
+    ("e66fccd92ccd356b0cd921a9334d4eb72dce52a4ed4cc8586d24da718", "avg_ireland_map", "AIR_IN_GROUND", "ireland"),
+    ("c3d50ee61889dd033a8cf739e31693a527189e910a40d239b79a293c0", "avg_poland_tankmap", "GROUND", "poland"),
 ]
 
 

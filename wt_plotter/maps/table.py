@@ -251,4 +251,10 @@ MAPS: dict[str, MapInfo] = {
     '38e9c0628d9e022c89d4e321d21da16f187f7affefd9ecf8ccf9bcfe0': MapInfo('zhengzhou', BattleType.UNKNOWN, 'zhengzhou'),
     '0000048036008f002604e6061802600580034016800c0020001000000': MapInfo('no_map', BattleType.UNKNOWN, 'no map'),
     '33d843f98ff212cce719ce03248de199430f4e1f91b356632bb4e5680': MapInfo('avg_krymsk_tankmap', BattleType.GROUND, 'krymsk'),
+    'a4ca49a79e4e39bcab3a1ef1ede3f7c3cf05fe39de335ecf6cf0c9db8': MapInfo('avg_karelia_forest_a_tankmap', BattleType.GROUND, 'karelia forest a'),
+    '1b971320976036323c45dc56d88da50c622ac4238a4f3136619cf1398': MapInfo('avg_european_fortress_tankmap', BattleType.GROUND, 'european fortress'),
+    '1b0d52920d649d885c90f920fec0b6c0ed0199365a497253e295a11e0': MapInfo('avg_falklands_tankmap', BattleType.GROUND, 'falklands'),
+    'fc29b826f90db0165026c02951f1e3b287f91fe51de53b6539c8b3980': MapInfo('avg_ireland_tankmap', BattleType.GROUND, 'ireland'),
+    'e66fccd92ccd356b0cd921a9334d4eb72dce52a4ed4cc8586d24da718': MapInfo('avg_ireland_map', BattleType.AIR_IN_GROUND, 'ireland'),
+    'c3d50ee61889dd033a8cf739e31693a527189e910a40d239b79a293c0': MapInfo('avg_poland_tankmap', BattleType.GROUND, 'poland'),
 }

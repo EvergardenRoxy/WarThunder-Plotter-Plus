@@ -140,6 +140,15 @@ def test_events_roundtrip(conn):
     assert db.get_events(conn, match_id, 2000) == [{"timestamp": 3000, "msg": "second"}]
 
 
+def test_events_skip_untranslated_disconnect_line(conn):
+    match_id = db.start_match(conn, "hash")
+    db.add_events(conn, match_id, [
+        db.EventRecord(1.0, 1, "Pilot 已掉线。", "{}"),
+        db.EventRecord(1.0, 2, "Pilottd! kd?NET_PLAYER_DISCONNECT_FROM_GAME", "{}"),
+    ])
+    assert [event["msg"] for event in db.get_events(conn, match_id, 0)] == ["Pilot 已掉线。"]
+
+
 def test_delete_match_removes_events(conn):
     match_id = db.start_match(conn, "hash")
     db.add_events(conn, match_id, [db.EventRecord(1.0, 1, "m", "{}")])

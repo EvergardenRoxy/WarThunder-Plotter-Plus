@@ -6,6 +6,9 @@ import sqlite3
 from wt_plotter.config import DB_SETTINGS
 
 
+UNTRANSLATED_DISCONNECT = "NET_PLAYER_DISCONNECT_FROM_GAME"
+
+
 class _Connection(sqlite3.Connection):
     enum_ids: dict[tuple[str, str], int]
 
@@ -283,9 +286,11 @@ def add_events(conn: sqlite3.Connection, match_id: int, events: list[EventRecord
 
 
 def get_events(conn: sqlite3.Connection, match_id: int, since_ms: int) -> list[dict]:
+    # 掉线时游戏会多发一条没翻译的原始行（"<昵称>td! kd?NET_PLAYER_DISCONNECT_FROM_GAME"），不返回。
     rows = conn.execute(
-        "SELECT timestamp_ms, msg FROM events WHERE match_id = ? AND timestamp_ms >= ? ORDER BY timestamp_ms, id",
-        (match_id, since_ms),
+        "SELECT timestamp_ms, msg FROM events WHERE match_id = ? AND timestamp_ms >= ? AND msg NOT LIKE ? "
+        "ORDER BY timestamp_ms, id",
+        (match_id, since_ms, f"%{UNTRANSLATED_DISCONNECT}"),
     )
     return [{"timestamp": row["timestamp_ms"], "msg": row["msg"]} for row in rows]
 

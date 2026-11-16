@@ -2,6 +2,15 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.4.2
+
+- Trails now fade continuously. They are no longer stroked in 20 bands, so the dark dots at the joints and the visible brightness steps are gone.
+- Battle feed: long text wraps and the horizontal scrollbar is gone, scrollbars and drop-downs are dark, and the untranslated raw line the game sends on a disconnect is no longer shown.
+- Chinese navigation labels changed to "历史战局" and "实时战局".
+- Five maps updated by the game are recognized again: Karelia, European Fortress, Falklands, Ireland (ground and air map) and Poland. Checked against match replays.
+- IFVs are now drawn on the map (they were ignored before).
+- Documentation rewritten: new pages for capture and map recognition, the match viewer, and data and settings; the README gains a feature overview and screenshots.
+
 ## 0.4.1
 
 - Air battles on combined maps, where the game first reports the ground map, are now identified by the first sortie and shown as air battles in the match list and page header. Checked against the match replay.

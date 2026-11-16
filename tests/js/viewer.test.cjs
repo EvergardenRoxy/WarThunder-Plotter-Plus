@@ -128,22 +128,43 @@ test('restarts playback from the end and cancels the pending frame on pause', ()
     assert.deepEqual(stateChanges, [true, false]);
 });
 
-test('fade bands cover the visible range from faint to opaque', () => {
+// 记录画线调用的 Path2D 替身。
+class FakePath {
+    constructor() { this.ops = []; }
+    moveTo(x, y) { this.ops.push(['M', x, y]); }
+    lineTo(x, y) { this.ops.push(['L', x, y]); }
+}
+
+test('segments fade linearly from the start of the trail window', () => {
     const viewer = makeViewer(load('tracks.js', 'settings.js', 'viewer.js'), { trail: 30 });
-    const points = Array.from({ length: 31 }, (_, i) => ({ t: i * 1000 }));
-    const bands = viewer._fadeBands(points, 0, 30, 0);
-    assert.equal(bands.length, 20);
-    assert.equal(bands[0].from, 0);
-    assert.equal(bands.at(-1).to, 30);
-    assert.ok(bands[0].alpha < 0.1);
-    assert.ok(bands.at(-1).alpha > 0.9);
-    for (let i = 0; i < bands.length - 1; i++) assert.equal(bands[i].to, bands[i + 1].from);
+    assert.equal(viewer._fadeAlpha({ t: 0 }, { t: 1000 }, 0), 500 / 30000);
+    assert.equal(viewer._fadeAlpha({ t: 14000 }, { t: 16000 }, 0), 0.5);
+    assert.equal(viewer._fadeAlpha({ t: 29000 }, { t: 31000 }, 0), 1);
+    viewer.trail = 0;
+    assert.equal(viewer._fadeAlpha({ t: 0 }, { t: 1000 }, 0), 1);
 });
 
-test('no fade when the trail shows everything', () => {
-    const viewer = makeViewer(load('tracks.js', 'settings.js', 'viewer.js'), { trail: 0 });
-    const points = Array.from({ length: 11 }, (_, i) => ({ t: i * 1000 }));
-    assert.deepEqual(JSON.parse(JSON.stringify(viewer._fadeBands(points, 0, 10, 0))), [{ from: 0, to: 10, alpha: 1 }]);
+test('each segment joins the path of its fade level', () => {
+    const context = load('tracks.js', 'settings.js', 'viewer.js');
+    context.Path2D = FakePath;
+    const viewer = makeViewer(context, { trail: 10, width: 100, height: 100 });
+    const points = Array.from({ length: 11 }, (_, i) => ({ t: i * 1000, x: i / 10, y: 0 }));
+    const levels = [];
+    viewer._addTrack(levels, points, 0, 10, 0);
+    assert.deepEqual(Object.keys(levels).map(Number), [2, 6, 10, 14, 18, 22, 26, 30, 34, 38]);
+    assert.deepEqual(levels[2].ops, [['M', 0, 0], ['L', 10, 0]]);
+    assert.deepEqual(levels[38].ops, [['M', 90, 0], ['L', 100, 0]]);
+});
+
+test('segments of one level form a continuous line and gaps are skipped', () => {
+    const context = load('tracks.js', 'settings.js', 'viewer.js');
+    context.Path2D = FakePath;
+    const viewer = makeViewer(context, { trail: 0, width: 100, height: 100 });
+    const points = [0, 250, 500, 5000, 5250].map((t, i) => ({ t, x: i / 10, y: 0 }));
+    const levels = [];
+    viewer._addTrack(levels, points, 0, 4, 0);
+    assert.deepEqual(Object.keys(levels).map(Number), [40]);
+    assert.deepEqual(levels[40].ops, [['M', 0, 0], ['L', 10, 0], ['L', 20, 0], ['M', 30, 0], ['L', 40, 0]]);
 });
 
 test('blip size and line scale clamp and are saved', () => {

@@ -1,6 +1,10 @@
 /* 界面深色样式。 */
 
 :root {
+  /* 让浏览器自带的滚动条和下拉框用深色。 */
+  color-scheme: dark;
+  scrollbar-width: thin;
+  scrollbar-color: #444 transparent;
   --header-height: 48px;
   --control-height: 32px;
   --bg: #0d0d0d;
@@ -452,12 +456,14 @@ a {
   font-size: 0.8125rem;
 }
 
+/* 长昵称和没有空格的文字在任意位置换行，不出现横向滚动条。 */
 .event-feed li {
   display: flex;
   gap: 0.5rem;
-  padding: 0.2rem 0;
+  padding: 0.25rem 0.25rem 0.25rem 0;
   border-bottom: 1px solid #262626;
   color: #ccc;
+  overflow-wrap: anywhere;
 }
 
 .event-feed time {

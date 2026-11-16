@@ -30,6 +30,7 @@ const VIEW_STYLE = Object.freeze({
         SPAA: { shape: 'circle-cross', scale: 1 },
         SAM: { shape: 'circle-cross', scale: 1 },
         Wheeled: { shape: 'pentagon', scale: 1 },
+        IFV: { shape: 'pentagon', scale: 1 },
         Fighter: { shape: 'arrow', scale: 1 },
         Assault: { shape: 'arrow', scale: 1.15 },
         Bomber: { shape: 'arrow', scale: 1.3 },
@@ -39,7 +40,8 @@ const VIEW_STYLE = Object.freeze({
     capture: { radius: 12, alpha: 0.3, border: 2 },
     respawn: { size: 8, alpha: 0.5, border: 1.5 },
     trailOptions: [10, 30, 60, 120, 0],
-    fadeBands: 20,
+    // 轨迹渐隐的不透明度档数；档数越多越平滑，绘制也越慢。
+    fadeLevels: 40,
     blipRange: [0.25, 1.5],
     lineScaleRange: [0.5, 2],
     speedRange: [5, 40],
@@ -94,6 +96,7 @@ class MatchViewer {
         this.maxTimestamp = 0;
         this.isPlaying = false;
         this.playbackFrame = null;
+        this.trackLayer = document.createElement('canvas');
         this._resize();
         this._loadMap();
         this._setupInteractions();
@@ -125,6 +128,8 @@ class MatchViewer {
         this.dpr = window.devicePixelRatio || 1;
         this.canvas.width = Math.round(width * this.dpr);
         this.canvas.height = Math.round(height * this.dpr);
+        this.trackLayer.width = this.canvas.width;
+        this.trackLayer.height = this.canvas.height;
         this.canvas.style.width = `${width}px`;
         this.canvas.style.height = `${height}px`;
         this._clampPan();
@@ -565,11 +570,13 @@ class MatchViewer {
 
         const current = [];
         const deaths = [];
+        const fades = new Map();
         for (const { category, points } of this.tracks) {
             if (!this.filters[category]) continue;
             const [start, end] = this._visibleRange(points, cutoff);
             if (start > end) continue;
-            if (end > start) this._drawTrack(category, points, start, end, cutoff - this.trail * 1000);
+            if (!fades.has(category)) fades.set(category, []);
+            this._addTrack(fades.get(category), points, start, end, cutoff - this.trail * 1000);
             const point = points[end];
             if (cutoff - point.t <= VIEW_STYLE.aliveWindow) {
                 current.push({ category, point, previous: points[end - 1] });
@@ -577,6 +584,7 @@ class MatchViewer {
                 deaths.push({ category, point });
             }
         }
+        this._drawFades(fades);
         this.markers = [];
         for (const { category, point, previous } of current) this._drawCurrent(category, point, previous);
         for (const { category, point } of deaths) this._drawDeath(category, point);
@@ -609,51 +617,73 @@ class MatchViewer {
         return point.t - previous.t > VIEW_STYLE.gapLine;
     }
 
-    _drawTrack(category, points, start, end, earliest) {
-        const ctx = this.ctx;
-        for (const band of this._fadeBands(points, start, end, earliest)) {
-            ctx.beginPath();
-            ctx.moveTo(points[band.from].x * this.width, points[band.from].y * this.height);
-            for (let i = band.from + 1; i <= band.to; i++) {
-                const x = points[i].x * this.width;
-                const y = points[i].y * this.height;
-                if (this._isGap(points[i - 1], points[i])) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
+    // 一小段线的不透明度：按中点时刻在显示窗口内线性变化，显示全部时不淡化。
+    _fadeAlpha(previous, point, earliest) {
+        if (this.trail === 0) return 1;
+        return clamp(((previous.t + point.t) / 2 - earliest) / (this.trail * 1000), [0, 1]);
+    }
+
+    // 把轨迹的每一小段加入它所在档位的路径；levels[档位] 是该档所有线段合成的一条路径。
+    _addTrack(levels, points, start, end, earliest) {
+        let lastLevel = -1;
+        for (let i = start + 1; i <= end; i++) {
+            if (this._isGap(points[i - 1], points[i])) {
+                lastLevel = -1;
+                continue;
             }
-            this._strokeTrack(category, VIEW_STYLE.lineAlpha[category] * band.alpha);
+            const level = Math.round(this._fadeAlpha(points[i - 1], points[i], earliest) * VIEW_STYLE.fadeLevels);
+            const path = levels[level] ??= new Path2D();
+            if (level !== lastLevel) path.moveTo(points[i - 1].x * this.width, points[i - 1].y * this.height);
+            path.lineTo(points[i].x * this.width, points[i].y * this.height);
+            lastLevel = level;
         }
     }
 
-    // 把可见段按时间等分成若干段，越旧越透明；显示全部时不淡化。
-    _fadeBands(points, start, end, earliest) {
-        if (this.trail === 0) return [{ from: start, to: end, alpha: 1 }];
-        const span = this.trail * 1000;
-        const count = VIEW_STYLE.fadeBands;
-        const bands = [];
-        let from = start;
-        for (let k = 1; k <= count && from < end; k++) {
-            const limit = earliest + span * k / count;
-            let to = k === count ? end : Math.max(from + 1, window.Tracks.lastIndexAtMost(points, limit, p => p.t));
-            to = Math.min(to, end);
-            const mid = (points[from].t + points[to].t) / 2;
-            bands.push({ from, to, alpha: Math.max(0, Math.min(1, (mid - earliest) / span)) });
-            from = to;
+    // 轨迹画在单独的图层上，从旧到新逐档描边；每档先擦掉自己要盖住的区域，
+    // 半透明的线在接头和交叉处就不会叠深，看起来是连续的渐变。
+    _drawFades(fades) {
+        const layer = this.trackLayer.getContext('2d');
+        layer.setTransform(1, 0, 0, 1, 0, 0);
+        layer.clearRect(0, 0, this.trackLayer.width, this.trackLayer.height);
+        layer.setTransform(this.ctx.getTransform());
+        layer.lineJoin = 'round';
+        layer.lineCap = 'round';
+        for (const [category, levels] of fades) {
+            const width = VIEW_STYLE.lineWidth[category] * this.lineScale / this.zoom;
+            const halo = width + VIEW_STYLE.haloWidth / this.zoom;
+            // 先画完各档的黑边再画本色，新一段的黑边不会压在上一段的本色上。
+            for (const [lineWidth, color] of [[halo, VIEW_STYLE.haloColor], [width, VIEW_STYLE.teamColors[category]]]) {
+                layer.lineWidth = lineWidth;
+                levels.forEach((path, level) => {
+                    if (level === 0) return;
+                    layer.globalCompositeOperation = 'destination-out';
+                    layer.globalAlpha = 1;
+                    layer.strokeStyle = '#000';
+                    layer.stroke(path);
+                    layer.globalCompositeOperation = 'source-over';
+                    layer.globalAlpha = VIEW_STYLE.lineAlpha[category] * level / VIEW_STYLE.fadeLevels;
+                    layer.strokeStyle = color;
+                    layer.stroke(path);
+                });
+            }
         }
-        return bands;
+        layer.globalAlpha = 1;
+        this.ctx.save();
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        this.ctx.drawImage(this.trackLayer, 0, 0);
+        this.ctx.restore();
     }
 
-    _strokeTrack(category, alpha) {
+    // 给阵亡标记描黑边和本色。
+    _strokeMark(category, path) {
         const ctx = this.ctx;
         const width = VIEW_STYLE.lineWidth[category] * this.lineScale;
         ctx.lineWidth = (width + VIEW_STYLE.haloWidth) / this.zoom;
         ctx.strokeStyle = VIEW_STYLE.haloColor;
-        ctx.globalAlpha = alpha;
-        ctx.stroke();
+        ctx.stroke(path);
         ctx.lineWidth = width / this.zoom;
         ctx.strokeStyle = VIEW_STYLE.teamColors[category];
-        ctx.globalAlpha = alpha;
-        ctx.stroke();
-        ctx.globalAlpha = 1;
+        ctx.stroke(path);
     }
 
     _drawPoi(point, isCapture) {
@@ -726,16 +756,15 @@ class MatchViewer {
     }
 
     _drawDeath(category, point) {
-        const ctx = this.ctx;
         const x = point.x * this.width;
         const y = point.y * this.height;
         const half = this.blipSize * VIEW_STYLE.markerBase * VIEW_STYLE.deathScale / 2 / this.zoom;
-        ctx.beginPath();
-        ctx.moveTo(x - half, y - half);
-        ctx.lineTo(x + half, y + half);
-        ctx.moveTo(x + half, y - half);
-        ctx.lineTo(x - half, y + half);
-        this._strokeTrack(category, 1);
+        const cross = new Path2D();
+        cross.moveTo(x - half, y - half);
+        cross.lineTo(x + half, y + half);
+        cross.moveTo(x + half, y - half);
+        cross.lineTo(x - half, y + half);
+        this._strokeMark(category, cross);
     }
 
     _saveSettings() {
