@@ -1,6 +1,6 @@
-# Translation
+[← Back to README](../../README.md) · [简体中文](../zh/translation.md)
 
-[简体中文](../zh/translation.md)
+# Translation
 
 The UTF-8 JSON catalogs in `wt_plotter/i18n/locales/` use flat keys such as `nav.matches`. Keep the English and Chinese key sets and named placeholders in sync. Map keys use `map.<map_id>` and the same English display name in both catalogs. The generic `map.unknown` label is translated.
 

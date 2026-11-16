@@ -1,6 +1,6 @@
-# Architecture
+[← Back to README](../../README.md) · [简体中文](../zh/architecture.md)
 
-[简体中文](../zh/architecture.md)
+# Architecture
 
 `wt_plotter.cli` starts the selected mode. In `watch` mode, the CLI starts a capture thread and a threaded Werkzeug server. The web and tray quit actions call the same HTTP shutdown route. When the server returns, the CLI waits for capture to finish, closes the match, and stops the tray.
 
@@ -23,4 +23,4 @@ flowchart LR
 - `storage/db.py` owns the database schema and query shapes. The capture thread and each HTTP request open their own connections.
 - `web/` renders pages through Jinja. The browser combines tick metadata with positions by `tick_id` for real-time display and replay.
 - While the map is valid, the capture thread also polls `/hudmsg`. The first batch of each match only advances the cursor; later messages go into the `events` table. If the endpoint is unavailable the feed is skipped and tracking continues.
-- Shared front-end modules: `settings.js` keeps viewer settings in localStorage, `shapes.js` draws unit class shapes, and `tracks.js` links tracks. `viewer.js` handles drawing, the air map switch and the feed list.
+- Shared front-end modules: `settings.js` keeps viewer settings in localStorage, `shapes.js` draws unit class shapes, and `tracks.js` links tracks. `viewer.js` handles drawing, the air map switch and the feed list. Trails are split by age into 40 opacity levels and drawn on a separate layer that is then composited onto the map; each level first erases the area it will cover, so semi-transparent lines do not darken where they join or cross.

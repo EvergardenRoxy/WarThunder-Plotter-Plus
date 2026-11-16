@@ -1,6 +1,6 @@
-# 数据库
+[← 返回 README](../../README.zh-CN.md) · [English](../en/database.md)
 
-[English](../en/database.md)
+# 数据库
 
 项目沿用上游 v0.2.0 的 SQLite 表结构，SQL 位于 `storage/db.py` 的 `_create_tables`。比赛行保存地面与空中地图哈希、初始占领点摘要、核弹标记及空中坐标换算参数。网页通过哈希取得地图 ID、名称和战斗类型。
 
@@ -21,6 +21,6 @@ erDiagram
 
 ## 读取与清理
 
-`GET /api/match/<id>/positions` 返回 `ticks` 和 `positions`。整数 `since` 按毫秒解释，小数按秒解释，结果包含起点时间戳。回放器关联两份列表，存在换算结果时使用地面坐标。`GET /api/match/<id>/events?since=<毫秒>` 按时间升序返回播报。
+`GET /api/match/<id>/positions` 返回 `ticks` 和 `positions`。整数 `since` 按毫秒解释，小数按秒解释，结果包含起点时间戳。回放器关联两份列表，存在换算结果时使用地面坐标。`GET /api/match/<id>/events?since=<毫秒>` 按时间升序返回播报，不含掉线时游戏多发的未翻译原始行（以 `NET_PLAYER_DISCONNECT_FROM_GAME` 结尾）。
 
 数据库采用 WAL，采集线程和网页请求各自打开连接。删除已结束比赛时，在同一事务中删除播报、位置、tick 和比赛行，再请求增量回收。已有数据库沿用原 SQLite 自动回收模式。采集启动时结束上次中断遗留的比赛。

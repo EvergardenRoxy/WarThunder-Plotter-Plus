@@ -1,38 +1,69 @@
+<a id="ai-statement"></a>
+
+[![AI Assisted](https://img.shields.io/badge/AI-Claude%20Fable%205.2%20%2B%20Claude%20Opus%205.5-D97757?style=for-the-badge&logo=anthropic&logoColor=white)](#ai-statement)
+
+This project is a ground-up rebuild of ElBartt/WarThunder-Plotter. Fable 5.2 did the design, data checks and review; Opus 5.5 wrote most of the implementation.
+
 # WT Plotter Plus
 
 [简体中文](README.zh-CN.md)
 
-WT Plotter Plus records match telemetry from the local War Thunder client on Windows. Open the web interface to watch a match live, browse recorded matches, or replay positions with the timeline, filters, zoom, and pan.
+Records what happens on the battlefield in every War Thunder match on Windows: who was where, where they went, and who destroyed whom. Afterwards you can scrub through the whole match in a browser, or watch it live while you play.
+
+All data comes from the game client's own local interface (`localhost:8111`, the built-in web map). Nothing reads game memory or touches game files, and recordings stay on your computer.
+
+## Features
+
+- **[Automatic capture](docs/en/capture.md)**: recording starts when you enter a battle and stops when you leave. The map is recognized from the minimap, and ground, air and naval battles are told apart.
+- **[Match replay](docs/en/viewer.md)**: every unit's trail is drawn on the map in its team color and fades with age. Play at 5×–40×, drag the timeline, zoom, pan, and filter by team.
+- **[Live match](docs/en/viewer.md#live-match)**: the same view, updating during the battle. Handy on a second screen.
+- **[Unit classes and death marks](docs/en/viewer.md#reading-the-map)**: light, medium and heavy tanks, tank destroyers, SPAA and aircraft each have their own shape. A × marks where you, your squad and your allies died.
+- **[Air map switch](docs/en/viewer.md#ground-map-and-air-map)**: when you fly in a ground battle the air map is recorded too, and the replay can switch between the two.
+- **[Battle feed](docs/en/viewer.md#battle-feed)**: the game's kill, shoot-down and fire messages are recorded and follow the timeline during replay.
+- **English and Chinese interface**: switch in the navigation bar. The first launch follows the Windows display language.
+
+## Examples
+
+| Ground battle replay | Air battle replay |
+| --- | --- |
+| ![Ground battle replay](docs/images/match_ground.png) | ![Air battle replay](docs/images/match_air.png) |
+
+The screenshots show the Chinese interface, and the battle feed in them uses made-up player names. See also the [match list](docs/images/match_list.png).
 
 ## Install
 
-- **Portable EXE** — Put `WarThunderPlotterPlus-portable.exe` in a writable folder and run it. Build it from source with `scripts\build_windows.bat` after setup.
-- **Source** — Install Python 3.11 with the Windows Python Launcher, then run `scripts\setup.bat` from the repository root. It creates `.venv` and installs the dependencies for development and packaging.
+- **Portable EXE**: download `WarThunderPlotterPlus-portable.exe` from [Releases](https://github.com/EvergardenRoxy/WarThunder-Plotter-Plus/releases), put it in a writable folder and run it.
+- **From source**: install Python 3.11 with the Windows Python Launcher, then run `scripts\setup.bat` in the repository root.
 
-## Run
+## Use
 
-```powershell
-.\.venv\Scripts\python -m wt_plotter watch
-.\.venv\Scripts\python -m wt_plotter serve --port 5057
-.\.venv\Scripts\python -m wt_plotter capture
+Start the program, then play a match. It opens your browser on the Live page, which starts drawing as soon as you are in a battle. Finished matches are listed under Matches.
+
+```text
+WarThunderPlotterPlus-portable.exe            capture and open the live page (default, same as watch)
+WarThunderPlotterPlus-portable.exe serve      browse recorded matches without capturing
+WarThunderPlotterPlus-portable.exe capture    capture only, no web page
 ```
 
-`watch` is the default and opens the live view. `serve` opens the recorded-match list and runs the web server without collecting telemetry. `capture` records in the background until interrupted. For the EXE, pass the same subcommands directly. Both web modes default to `127.0.0.1:5000` and accept `--host` and `--port`.
+From source, replace the EXE with `.\.venv\Scripts\python -m wt_plotter`. The web page is at `http://127.0.0.1:5000` by default; change it with `--host` and `--port`. Click Quit in the top right of the page or in the system tray to close the program.
 
-Use the language selector in the navigation bar to switch between English and Chinese. The first launch follows the Windows interface language. Map names are displayed in English in both languages. Use **Quit** in the web page or tray, or press Ctrl+C in a terminal.
+## Documentation
 
-## Data and updates
+- [Capture and map recognition](docs/en/capture.md)
+- [Match viewer](docs/en/viewer.md)
+- [Data, settings and updates](docs/en/data.md)
+- [Architecture](docs/en/architecture.md)
+- [Database](docs/en/database.md)
+- [Development guide](docs/en/development.md)
+- [Translation](docs/en/translation.md)
+- [Changelog](CHANGELOG.md)
 
-The `data/` folder sits next to the EXE or at the root of a source checkout. It contains `matches.db`, `maps/`, `settings.json`, `wt_plotter.log`, and any `missing_map_hashes.log` entries. With both instances stopped, you can copy an upstream v0.2.0 database and its map images into this folder. Back up `data/` before replacing a database.
+## Origins and credits
 
-The portable build checks this project's GitHub Releases on startup and can replace the EXE when a newer portable build is available. Launch with `WT_PLOTTER_SKIP_UPDATE=1` in the process environment to skip the check.
+This project was rebuilt from [ElBartt/WarThunder-Plotter](https://github.com/ElBartt/WarThunder-Plotter) and keeps its database schema and map hash table. Many thanks. Thanks also to Sgambe33 for [WT-Plotter](https://github.com/Sgambe33/WT-Plotter) (trail plotting and map hashes) and to ValerieOSD for [WarThunderRPC](https://github.com/ValerieOSD/WarThunderRPC).
 
-## Development
+This project is not affiliated with Gaijin Entertainment.
 
-Run `.venv\Scripts\python -m pytest -q` from the repository root. The server tests use the Windows loopback interface. See [architecture](docs/en/architecture.md), [development](docs/en/development.md), [database](docs/en/database.md), [translation](docs/en/translation.md), and [changes](CHANGELOG.md).
-
-## Credits and license
-
-Thanks to ElBartt/WarThunder-Plotter for the original recorder and map data, Sgambe33 for the earlier plotting work and map hashes, and ValerieOSD for WarThunderRPC. [Upstream](https://github.com/ElBartt/WarThunder-Plotter) · [WT-Plotter](https://github.com/Sgambe33/WT-Plotter) · [WarThunderRPC](https://github.com/ValerieOSD/WarThunderRPC)
+## License
 
 Distributed under the [MIT License](LICENSE).

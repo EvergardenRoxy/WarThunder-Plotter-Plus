@@ -1,6 +1,6 @@
-# 架构
+[← 返回 README](../../README.zh-CN.md) · [English](../en/architecture.md)
 
-[English](../en/architecture.md)
+# 架构
 
 `wt_plotter.cli` 根据子命令启动程序。`watch` 启动采集线程和多线程 Werkzeug 服务。网页和托盘通过同一个 HTTP 路由关停服务。服务返回后，命令行等待采集线程退出、结束当前比赛并关闭托盘。
 
@@ -23,4 +23,4 @@ flowchart LR
 - `storage/db.py` 定义数据库表结构和查询结果。采集线程与每个 HTTP 请求各用独立连接。
 - `web/` 用 Jinja 渲染页面。浏览器按 `tick_id` 合并 tick 元数据与位置，供实时显示和回放使用。
 - 采集线程在地图有效时请求 `/hudmsg`。每场第一批消息只用来推进游标，之后的消息写入 `events` 表；接口不可用时跳过，不影响轨迹采集。
-- 前端通用模块：`settings.js` 用 localStorage 读写查看器设置，`shapes.js` 绘制兵种形状，`tracks.js` 串联轨迹。`viewer.js` 负责业务绘制、空战图切换和播报列表。
+- 前端通用模块：`settings.js` 用 localStorage 读写查看器设置，`shapes.js` 绘制兵种形状，`tracks.js` 串联轨迹。`viewer.js` 负责业务绘制、空战图切换和播报列表。轨迹按时间分成 40 档不透明度，画在单独的图层上再叠到地图上；每档先擦掉自己要盖住的区域再描边，半透明线条的接头和交叉处不会叠深。

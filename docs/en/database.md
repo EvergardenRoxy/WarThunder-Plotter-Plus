@@ -1,6 +1,6 @@
-# Database
+[← Back to README](../../README.md) · [简体中文](../zh/database.md)
 
-[简体中文](../zh/database.md)
+# Database
 
 This project keeps the SQLite schema from the upstream v0.2.0 release. `storage/db.py` holds the schema in `_create_tables`. Match rows store the base and air map hashes, capture-zone summary, nuke flag, and air-view transform. The web layer derives map IDs, names, and battle types from the hashes.
 
@@ -21,6 +21,6 @@ erDiagram
 
 ## Reads and cleanup
 
-`GET /api/match/<id>/positions` returns `ticks` and `positions`. Integer `since` values are milliseconds and decimal values are seconds. The filter includes the given timestamp. The viewer joins the returned arrays and uses mapped ground coordinates when available. `GET /api/match/<id>/events?since=<ms>` returns feed messages in time order.
+`GET /api/match/<id>/positions` returns `ticks` and `positions`. Integer `since` values are milliseconds and decimal values are seconds. The filter includes the given timestamp. The viewer joins the returned arrays and uses mapped ground coordinates when available. `GET /api/match/<id>/events?since=<ms>` returns feed messages in time order, without the untranslated raw line the game sends on a disconnect (ending in `NET_PLAYER_DISCONNECT_FROM_GAME`).
 
 The app uses WAL and a database connection per capture thread or web request. Deleting a finished match removes its feed messages, positions, ticks, and match row in one transaction, then requests incremental vacuum. Existing databases retain their SQLite auto-vacuum mode. At capture startup, matches left active by an interrupted run are marked ended.

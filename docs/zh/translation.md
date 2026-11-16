@@ -1,6 +1,6 @@
-# 翻译
+[← 返回 README](../../README.zh-CN.md) · [English](../en/translation.md)
 
-[English](../en/translation.md)
+# 翻译
 
 `wt_plotter/i18n/locales/` 下的 UTF-8 JSON 采用 `nav.matches` 这样的扁平键。确保中英文键集和命名占位符一致。`map.<map_id>` 在两种语言中使用相同的上游英文地图名，通用的 `map.unknown` 译为中文。
 
