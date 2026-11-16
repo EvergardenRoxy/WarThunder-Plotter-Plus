@@ -1,12 +1,12 @@
 # 执行者提示词
 
-你在无人值守模式下重建 WT Plotter Plus。没有人会回答问题，不要提问，不要等待确认。
+你在无人值守模式下按计划修改 WT Plotter Plus。启动指令会给出计划路径，下文称“该计划”。没有人会回答问题，不要提问，不要等待确认。
 
 ## 每次启动先做
 
 1. 读 `AGENTS.MD`。
-2. 读 `docs/superpowers/specs/2026-11-15-rebuild-design.md`（设计）。
-3. 读 `docs/superpowers/plans/2026-11-15-rebuild.md`（计划）。
+2. 读该计划。计划头部 `**Spec:**` 指向的设计也要读（可能是单独的文档，也可能是计划里的“设计”一节）。
+3. 若启动指令没有给出计划路径，读 `docs/superpowers/plans/2026-11-15-rebuild.md`。
 4. 读 `docs/superpowers/plans/PROGRESS.md`（若存在）。
 5. 运行 `git status` 与 `git log --oneline -15`（仓库未初始化则跳过，Task 1 会初始化）。
 
@@ -18,7 +18,7 @@
 - 每完成一步，把计划里该步的 `- [ ]` 改为 `- [x]`。
 - Task 的最后一步是提交。提交前全量测试必须全绿：`.venv\Scripts\python -m pytest -q`。
 - 提交内容包括代码、计划里的勾选、`PROGRESS.md` 的记录。
-- 提交后在 `PROGRESS.md` 的“完成记录”追加一行：日期、Task 编号、提交哈希、一句话说明。
+- 提交后在 `PROGRESS.md` 的“完成记录”追加一行：日期、计划文件名、Task 编号、提交哈希、一句话说明。`PROGRESS.md` 其他各节的记录也写上计划文件名，以免和其他计划的 Task 编号混淆。
 - 然后结束本次会话。不要继续做下一个 Task。
 
 如果启动时工作区有未提交的改动，说明上次会话中断了：查看 diff，接着把那个 Task 做完，不要丢弃改动。

@@ -1,6 +1,7 @@
 # Unattended runner: one plan Task per Claude session, retry until the plan is done.
 # Usage:  powershell -ExecutionPolicy Bypass -File scripts\run_unattended.ps1
 param(
+    [string]$Plan = "docs/superpowers/plans/2026-11-15-viewer-readability.md",
     [string]$Model = "claude-opus-5-5",
     [int]$RetryMinutes = 15,     # wait after a session that made no progress
     [int]$MaxIdleRuns = 28,      # 28 x 15 min = 7 h, longer than one quota window
@@ -10,8 +11,8 @@ param(
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-$plan = "docs\superpowers\plans\2026-11-15-rebuild.md"
-$prompt = "Read docs/superpowers/plans/executor-prompt.md and follow it exactly."
+$plan = $Plan
+$prompt = "Read docs/superpowers/plans/executor-prompt.md and follow it exactly. The plan is $Plan."
 $logDir = Join-Path $root "logs"
 New-Item -ItemType Directory -Force $logDir | Out-Null
 $log = Join-Path $logDir "unattended.log"
