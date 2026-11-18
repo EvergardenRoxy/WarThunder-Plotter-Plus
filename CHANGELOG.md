@@ -2,6 +2,11 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.4.5
+
+- Match replays can show all inferred teammate death locations up to the selected time, including markers whose trails have faded.
+- The Live page now has a timeline. Drag back to inspect an earlier moment, play forward, or use **Back to live** to resume following the newest data while recording continues.
+
 ## 0.4.4
 
 - Match history groups records by local start date and supports filtering by day. Each match shows its stable record number.

@@ -98,7 +98,8 @@ class MatchViewer {
         this.trail = settings.trail;
         this.speed = settings.speed;
         this.showAllFriendlyDeaths = settings.showAllFriendlyDeaths;
-        this.timelinePosition = 1.0;
+        // null 表示跟随最新时刻，倒带时保存固定的比赛内毫秒数。
+        this.selectedTime = null;
         this.maxTimestamp = 0;
         this.isPlaying = false;
         this.playbackFrame = null;
@@ -295,7 +296,7 @@ class MatchViewer {
     _applyMapMetadata(match) {
         const battleTypeChanged = this.battleType !== match.battle_type;
         this.battleType = match.battle_type;
-        if (!this.mapKindSelected && this.mapKind !== match.default_map) {
+        if (this.isAtLatest && !this.mapKindSelected && this.mapKind !== match.default_map) {
             this.setMapKind(match.default_map, false);
         } else if (battleTypeChanged) {
             this._buildTracks();
@@ -416,16 +417,21 @@ class MatchViewer {
             const match = await resp.json();
             this._applyMapMetadata(match);
             if (match.ended_at) {
-                const activeResp = await fetch('/api/active');
-                const active = await activeResp.json();
-                if (active && active.id && active.id !== this.matchId) {
-                    window.location.href = '/live';
-                } else if (this.isLive) {
-                    // 最后一批位置和播报都取到后再结束刷新。
+                if (this.isAtLatest) {
+                    const activeResp = await fetch('/api/active');
+                    const active = await activeResp.json();
+                    if (this.isAtLatest && active && active.id !== this.matchId) {
+                        window.location.href = '/live';
+                        return;
+                    }
+                }
+                if (this.isLive) {
+                    // 倒带时留在这局，补齐最后的位置和播报。
                     const loaded = await Promise.all([this._loadPositions(), this._loadEvents()]);
                     if (loaded.every(Boolean)) {
                         this.isLive = false;
                         this._showMatchEnded();
+                        this._render();
                     }
                 }
             }
@@ -453,10 +459,11 @@ class MatchViewer {
         const statsEl = document.getElementById('stats');
         if (!statsEl) return;
 
-        const index = window.Tracks.lastIndexAtMost(this.positions, this._cutoff(), pos => pos.timestamp);
+        const index = window.Tracks.lastIndexAtMost(this.positions, this.getTimelineTime(), pos => pos.timestamp);
         const latest = this.positions[index];
-        const armyType = (this.isLive ? this.liveArmyType : latest?.army_type) || 'tank';
-        const vehicleType = (this.isLive ? this.liveVehicleType : '') || latest?.vehicle_type || '';
+        const followingLive = this.isLive && this.isAtLatest;
+        const armyType = (followingLive ? this.liveArmyType : latest?.army_type) || 'tank';
+        const vehicleType = (followingLive ? this.liveVehicleType : '') || latest?.vehicle_type || '';
         const mode = document.createElement('span');
         mode.className = armyType === 'air' ? 'army-status air-info' : 'army-status';
         const airLabel = this.mapKind === 'air' ? t('viewer.air_view_raw') : t('viewer.air_view');
@@ -548,9 +555,12 @@ class MatchViewer {
         }
     }
 
-    _cutoff() {
-        const end = this.getTimelineMax();
-        return this.isLive ? end : end * this.timelinePosition;
+    get isAtLatest() {
+        return this.selectedTime === null;
+    }
+
+    getTimelineTime() {
+        return this.selectedTime ?? this.getTimelineMax();
     }
 
     _getPoiClusters(cutoff) {
@@ -600,7 +610,7 @@ class MatchViewer {
         ctx.fillStyle = `rgba(0,0,0,${VIEW_STYLE.mapDim})`;
         ctx.fillRect(0, 0, w, h);
 
-        const cutoff = this._cutoff();
+        const cutoff = this.getTimelineTime();
         const { capture, respawn } = this._getPoiClusters(cutoff);
         this.poiCount = capture.length + respawn.length;
         if (this.filters.capture_zone) {
@@ -626,7 +636,7 @@ class MatchViewer {
                     current.push({ category, point, previous: points[end - 1] });
                 }
             }
-            const keepDeath = this.isLive && this.showAllFriendlyDeaths && (category === 'ally' || category === 'squad');
+            const keepDeath = this.showAllFriendlyDeaths && (category === 'ally' || category === 'squad');
             if ((inTrail || keepDeath) && this._isDeath(category, points, end, cutoff)) {
                 deaths.push({ category, point });
             }
@@ -867,8 +877,8 @@ class MatchViewer {
     }
 
     play() {
-        if (this.isLive || this.isPlaying || this.getTimelineMax() === 0) return;
-        if (this.timelinePosition === 1) this.setTimeline(0);
+        if (this.isPlaying || this.getTimelineMax() === 0 || (this.isLive && this.isAtLatest)) return;
+        if (this.isAtLatest) this.setTimelineTime(0);
         this.isPlaying = true;
         this.onPlayStateChange?.(true);
         let lastTime;
@@ -889,14 +899,19 @@ class MatchViewer {
     }
 
     _advancePlayback(dt) {
-        this.setTimeline(this.timelinePosition + dt * this.speed / this.getTimelineMax());
-        if (this.timelinePosition === 1) this.pause();
+        this.setTimelineTime(this.getTimelineTime() + dt * this.speed);
+        if (this.isAtLatest) this.pause();
     }
 
-    setTimeline(position) {
-        this.timelinePosition = Math.max(0, Math.min(1, position));
+    setTimelineTime(time) {
+        this.selectedTime = time >= this.getTimelineMax() ? null : Math.max(0, time);
         this._render();
         this._updateStats();
+    }
+
+    returnToLive() {
+        this.pause();
+        this.setTimelineTime(this.getTimelineMax());
     }
 
     getTimelineMax() {

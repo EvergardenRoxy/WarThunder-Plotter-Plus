@@ -67,6 +67,7 @@ if (mapCanvas) {
     const currentTime = document.getElementById('timeline-current');
     const maxTime = document.getElementById('timeline-max');
     const playButton = document.getElementById('timeline-play');
+    const liveButton = document.getElementById('timeline-live');
     const mapKindControl = document.getElementById('map-kind');
     const mapKindButtons = mapKindControl.querySelectorAll('[data-map-kind]');
     const mapTitle = document.getElementById('match-map-title');
@@ -83,11 +84,17 @@ if (mapCanvas) {
         mapKind: mapCanvas.dataset.defaultMap,
         pollInterval: 500,
         onRender(view) {
-            if (!timeline) return;
             const max = view.getTimelineMax();
-            timeline.value = view.timelinePosition * 100;
-            currentTime.textContent = view.formatTime(max * view.timelinePosition);
+            const time = view.getTimelineTime();
+            const label = view.formatTime(time);
+            timeline.max = max;
+            timeline.value = time;
+            timeline.disabled = max === 0;
+            timeline.setAttribute('aria-valuetext', label);
+            currentTime.textContent = label;
             maxTime.textContent = view.formatTime(max);
+            playButton.disabled = max === 0 || (view.isLive && view.isAtLatest);
+            if (liveButton) liveButton.disabled = view.isAtLatest;
         },
         onEvents(events) {
             const feed = document.getElementById('event-feed');
@@ -137,10 +144,8 @@ if (mapCanvas) {
         checkbox.addEventListener('change', () => viewer.setFilter(checkbox.dataset.filter, checkbox.checked));
     }
     const friendlyDeaths = document.getElementById('show-all-friendly-deaths');
-    if (friendlyDeaths) {
-        friendlyDeaths.checked = viewer.showAllFriendlyDeaths;
-        friendlyDeaths.addEventListener('change', () => viewer.setShowAllFriendlyDeaths(friendlyDeaths.checked));
-    }
+    friendlyDeaths.checked = viewer.showAllFriendlyDeaths;
+    friendlyDeaths.addEventListener('change', () => viewer.setShowAllFriendlyDeaths(friendlyDeaths.checked));
     const bindSlider = (id, value, setter, format = text => text) => {
         const slider = document.getElementById(id);
         const label = document.getElementById(`${id}-value`);
@@ -160,14 +165,15 @@ if (mapCanvas) {
     }
     trail.addEventListener('change', () => viewer.setTrail(Number(trail.value)));
 
-    if (playButton) bindSlider('speed-slider', viewer.speed, value => viewer.setSpeed(value), n => t('viewer.speed_value', { n }));
+    bindSlider('speed-slider', viewer.speed, value => viewer.setSpeed(value), n => t('viewer.speed_value', { n }));
 
-    playButton?.addEventListener('click', () => {
+    playButton.addEventListener('click', () => {
         if (viewer.isPlaying) viewer.pause();
         else viewer.play();
     });
-    timeline?.addEventListener('input', () => {
+    timeline.addEventListener('input', () => {
         viewer.pause();
-        viewer.setTimeline(Number(timeline.value) / 100);
+        viewer.setTimelineTime(timeline.valueAsNumber);
     });
+    liveButton?.addEventListener('click', () => viewer.returnToLive());
 }

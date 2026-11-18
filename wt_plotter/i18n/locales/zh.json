@@ -42,6 +42,7 @@
   "viewer.zoom_hint": "滚动缩放，拖动平移，双击重置",
   "viewer.timeline": "时间轴",
   "viewer.timeline_hint": "拖动时间轴回放比赛",
+  "viewer.return_live": "回到实时",
   "viewer.trail": "行动轨迹显示时间",
   "viewer.trail_all": "全部",
   "viewer.trail_seconds": "{n} 秒",

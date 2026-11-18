@@ -221,11 +221,16 @@ def test_mode_follows_first_sortie(client, conn, match_id, army, vehicle, mode):
     assert f'id="match-map-title">{icon} ' in client.get(f"/match/{match_id}").text
 
 
-def test_friendly_death_toggle_is_live_only(client, conn, match_id):
+def test_shared_timeline_and_friendly_death_toggle_in_live_and_replay(client, conn, match_id):
     control = 'id="show-all-friendly-deaths"'
-    assert control in client.get("/live").text
+    live = client.get("/live").text
     db.end_match(conn, match_id)
-    assert control not in client.get(f"/match/{match_id}").text
+    replay = client.get(f"/match/{match_id}").text
+    for text in (live, replay):
+        assert control in text
+        assert 'id="timeline-slider"' in text
+    assert 'id="timeline-live"' in live
+    assert 'id="timeline-live"' not in replay
 
 
 def test_mode_without_air_map_is_map_type(client, conn, match_id):

@@ -42,6 +42,7 @@
   "viewer.zoom_hint": "Scroll to zoom, drag to pan, double-click to reset",
   "viewer.timeline": "Timeline",
   "viewer.timeline_hint": "Drag to replay match progression",
+  "viewer.return_live": "Back to live",
   "viewer.trail": "Trail duration",
   "viewer.trail_all": "All",
   "viewer.trail_seconds": "{n}s",

@@ -40,6 +40,8 @@ On the map, scroll to zoom (50%–500%), drag to pan, double-click to reset. The
 
 These settings and the playback speed are saved in the browser and are still there next time. A different browser, or clearing site data, brings back the defaults.
 
+In live view and replay, **Show all teammate death locations** keeps detected squad and allied death markers on the selected map after their trails fade. The viewer shows markers inferred up to the current timeline position. The squad and ally filters still apply.
+
 ## Ground map and air map
 
 A ground battle in which you flew has two maps. Switch between them next to "Statistics" in the sidebar:
@@ -59,11 +61,11 @@ Matches recorded before 0.4.0 have no feed.
 
 ## Live match
 
-If no match is in progress, the Live page waits and refreshes when one starts. During a battle it updates every 0.5 seconds. There is no playback bar and the newest moment is always shown; trail duration, filters and the other settings work the same way.
+If no match is in progress, the Live page waits and refreshes when one starts. During a battle it follows the newest moment and checks for updates every 0.5 seconds.
 
-Turn on **Show all teammate death locations** to keep detected squad and allied death markers on the selected map after their trails fade. The viewer infers these markers from ended tracks. The squad and ally filters still apply.
+Drag the timeline back to inspect an earlier moment while recording continues. The map and battle feed stay at the selected time as new data arrives. Select **Play** to play forward or **Back to live** to jump directly to the latest moment.
 
-When the match ends the page stays on it and the "Live" badge in the header changes to "Ended". When the next match starts the page moves to it. If the capture program has stopped, "Capture stopped" appears above the map.
+When the match ends, the badge changes to **Ended**. If you are rewound, the page stays on that match until you return to live. If the capture program stops, **Capture stopped** appears above the map.
 
 ## Match list
 
