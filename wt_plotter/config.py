@@ -109,6 +109,7 @@ class CaptureSettings:
     """采集间隔与阈值。"""
 
     poll_interval: float = 0.2
+    map_retry_interval: float = 5.0
     match_end_grace_period: float = 20.0
     signature_rounding: int = 4
     valid_coord_min: float = 0.0

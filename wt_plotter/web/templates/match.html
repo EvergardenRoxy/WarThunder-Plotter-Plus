@@ -6,7 +6,7 @@
 <div class="match-title">
     <strong>{{ heading }}</strong>
     {% if is_live %}<span id="live-badge" class="badge live">{{ t('match.live') }}</span>{% endif %}
-    <span class="match-sub">{{ (icons[match.mode] ~ ' ' ~ match.map_name) | trim }}</span>
+    <span class="match-sub" id="match-map-title">{{ match.map_title }}</span>
     <span class="match-sub">{{ match.started_at | dt }}</span>
     <details class="match-details">
         <summary title="{{ t('viewer.details') }}" aria-label="{{ t('viewer.details') }}">ⓘ</summary>
@@ -15,10 +15,8 @@
             {% if match.ended_at %}
             <div>{{ t('match.ended_at', time=match.ended_at | dt) }}</div>
             {% endif %}
-            <div>{{ t('match.map', name=(icons[match.battle_type] ~ ' ' ~ match.map_name) | trim) }}</div>
-            {% if match.air_map %}
-            <div>{{ t('match.air_map', name=(icons[match.air_map.battle_type] ~ ' ' ~ match.air_map.map_name) | trim) }}</div>
-            {% endif %}
+            <div id="match-map-label">{{ match.map_label }}</div>
+            <div id="match-air-map-label"{% if not match.air_map %} hidden{% endif %}>{{ match.air_map_label }}</div>
             {% if match.initial_capture_count is not none %}
             <div>{{ t('match.initial_capture_zones', count=match.initial_capture_count) }}</div>
             {% endif %}
@@ -50,29 +48,30 @@
         {% endif %}
         <div class="canvas-wrapper">
             <div id="unit-tooltip" class="unit-tooltip" hidden></div>
-            <canvas id="mapCanvas" data-match-id="{{ match.id }}" data-live="{{ 'true' if is_live else 'false' }}" data-battle-type="{{ match.battle_type }}" data-has-air-map="{{ 'true' if match.air_map else 'false' }}" data-default-map="{{ default_map }}" title="{{ t('viewer.zoom_hint') }}"></canvas>
+            <canvas id="mapCanvas" data-match-id="{{ match.id }}" data-live="{{ 'true' if is_live else 'false' }}" data-battle-type="{{ match.battle_type }}" data-has-air-map="{{ 'true' if match.air_map else 'false' }}" data-default-map="{{ match.default_map }}" title="{{ t('viewer.zoom_hint') }}"></canvas>
         </div>
-        {% if not is_live %}
         <div class="playbar">
-            <button type="button" id="timeline-play" class="btn btn-primary play-button">{{ t('viewer.play') }}</button>
-            <input type="range" id="timeline-slider" min="0" max="100" step="any" value="100" class="timeline-slider" aria-label="{{ t('viewer.timeline') }}" title="{{ t('viewer.timeline_hint') }}">
+            <button type="button" id="timeline-play" class="btn btn-primary play-button" disabled>{{ t('viewer.play') }}</button>
+            <input type="range" id="timeline-slider" min="0" max="0" step="any" value="0" class="timeline-slider" aria-label="{{ t('viewer.timeline') }}" title="{{ t('viewer.timeline_hint') }}" disabled>
             <span class="timeline-display"><span id="timeline-current">--:--</span> / <span id="timeline-max">--:--</span></span>
-            <label for="speed-slider" class="speed-label">{{ t('viewer.speed') }}</label>
-            <input type="range" id="speed-slider" min="5" max="40" step="1" class="speed-slider">
-            <span id="speed-slider-value" class="control-value speed-value"></span>
+            {% if is_live %}
+            <button type="button" id="timeline-live" class="btn btn-secondary" disabled>{{ t('viewer.return_live') }}</button>
+            {% endif %}
+            <div class="playback-speed">
+                <label for="speed-slider" class="speed-label">{{ t('viewer.speed') }}</label>
+                <input type="range" id="speed-slider" min="5" max="40" step="1" class="speed-slider">
+                <span id="speed-slider-value" class="control-value speed-value"></span>
+            </div>
         </div>
-        {% endif %}
     </section>
     <aside class="sidebar">
         <div class="panel">
             <div class="panel-head">
                 <h3>{{ t('viewer.statistics') }}</h3>
-                {% if match.air_map %}
-                <div class="map-kind" id="map-kind" role="group" aria-label="{{ t('viewer.map_kind') }}">
-                    <button type="button" data-map-kind="ground">{{ t('viewer.map_ground') }}</button>
-                    <button type="button" data-map-kind="air">{{ t('viewer.map_air') }}</button>
+                <div class="map-kind" id="map-kind" role="group" aria-label="{{ t('viewer.map_kind') }}"{% if not match.air_map %} hidden{% endif %}>
+                    <button type="button" data-map-kind="ground" aria-pressed="{{ 'true' if match.default_map == 'ground' else 'false' }}">{{ t('viewer.map_ground') }}</button>
+                    <button type="button" data-map-kind="air" aria-pressed="{{ 'true' if match.default_map == 'air' else 'false' }}">{{ t('viewer.map_air') }}</button>
                 </div>
-                {% endif %}
             </div>
             <div id="stats">{{ t('viewer.loading') }}</div>
         </div>
@@ -118,6 +117,10 @@
                 </label>
                 {% endfor %}
             </div>
+            <label class="filter-item" for="show-all-friendly-deaths">
+                <input type="checkbox" id="show-all-friendly-deaths">
+                <span>{{ t('viewer.show_all_friendly_deaths') }}</span>
+            </label>
             <div class="unit-legend" id="unit-legend">
                 {% for key, shape in [
                     ('unit.LightTank', 'diamond'), ('unit.MediumTank', 'circle'), ('unit.HeavyTank', 'square'),

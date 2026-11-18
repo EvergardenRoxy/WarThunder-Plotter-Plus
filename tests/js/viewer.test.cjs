@@ -8,9 +8,12 @@ function makeViewer(context, properties = {}) {
         isLive: false,
         battleType: 'ground',
         mapKind: 'ground',
-        timelinePosition: 1,
+        selectedTime: null,
+        isPlaying: false,
         lastTimestamp: 0,
         maxTimestamp: 0,
+        lastEventTimestamp: 0,
+        events: [],
         positionCount: 0,
         positions: [],
         pois: [],
@@ -44,6 +47,7 @@ test('discards out-of-range display coordinates while advancing the cursor', asy
     const viewer = makeViewer(context);
     const position = { tick_id: 1, x: 0.5, y: 0.5, type: 'ground_model', icon: 'MediumTank', color: '#174DFF' };
     context.fetch = async () => ({
+        ok: true,
         json: async () => ({
             ticks: [{ id: 1, timestamp: 1000 }, { id: 2, timestamp: 1500 }],
             positions: [position, { ...position, x: 1.4 }, { ...position, tick_id: 2, x_ground: -0.2, y_ground: 0.5 }],
@@ -73,11 +77,37 @@ test('builds tracks by category and keeps ground data while the player flies', (
     ]);
 });
 
-test('uses the selected replay time and the latest live time', () => {
-    const viewer = makeViewer(load('tracks.js', 'viewer.js'), { maxTimestamp: 10000, timelinePosition: 0.5 });
-    assert.equal(viewer._cutoff(), 5000);
-    viewer.isLive = true;
-    assert.equal(viewer._cutoff(), 10000);
+test('live rewind keeps a fixed timestamp as new positions arrive and can return to live', () => {
+    const viewer = makeViewer(load('tracks.js', 'viewer.js'), { isLive: true, maxTimestamp: 10000 });
+    assert.equal(viewer.getTimelineTime(), 10000);
+    viewer.setTimelineTime(5000);
+    viewer.maxTimestamp = 17000;
+    assert.equal(viewer.getTimelineTime(), 5000);
+    assert.equal(viewer.isAtLatest, false);
+    viewer.returnToLive();
+    assert.equal(viewer.getTimelineTime(), 17000);
+    viewer.maxTimestamp = 18000;
+    assert.equal(viewer.getTimelineTime(), 18000);
+});
+
+test('playing from behind live rejoins the live edge when it catches up', () => {
+    const context = load('tracks.js', 'viewer.js');
+    let frame;
+    context.requestAnimationFrame = callback => { frame = callback; return 1; };
+    context.cancelAnimationFrame = () => {};
+    const viewer = makeViewer(context, { isLive: true, maxTimestamp: 10000, speed: 10 });
+    viewer.play();
+    assert.equal(viewer.isPlaying, false);
+    viewer.setTimelineTime(9000);
+    viewer.play();
+    frame(0);
+    viewer.maxTimestamp = 11000;
+    frame(100);
+    assert.equal(viewer.isPlaying, true);
+    assert.equal(viewer.getTimelineTime(), 10000);
+    frame(200);
+    assert.equal(viewer.isPlaying, false);
+    assert.equal(viewer.isAtLatest, true);
 });
 
 test('includes both ends of the selected trail window', () => {
@@ -93,13 +123,13 @@ test('includes both ends of the selected trail window', () => {
 test('advances playback at the chosen speed and stops at the end', () => {
     const context = load('tracks.js', 'viewer.js');
     context.cancelAnimationFrame = () => {};
-    const viewer = makeViewer(context, { maxTimestamp: 10000, timelinePosition: 0.5, isPlaying: true, speed: 10 });
+    const viewer = makeViewer(context, { maxTimestamp: 10000, selectedTime: 5000, isPlaying: true, speed: 10 });
     viewer._advancePlayback(100);
-    assert.equal(viewer.timelinePosition, 0.6);
+    assert.equal(viewer.getTimelineTime(), 6000);
     assert.equal(viewer.isPlaying, true);
-    viewer.timelinePosition = 0.95;
+    viewer.setTimelineTime(9500);
     viewer._advancePlayback(100);
-    assert.equal(viewer.timelinePosition, 1);
+    assert.equal(viewer.getTimelineTime(), 10000);
     assert.equal(viewer.isPlaying, false);
 });
 
@@ -119,10 +149,10 @@ test('restarts playback from the end and cancels the pending frame on pause', ()
         onPlayStateChange(isPlaying) { stateChanges.push(isPlaying); },
     });
     viewer.play();
-    assert.equal(viewer.timelinePosition, 0);
+    assert.equal(viewer.getTimelineTime(), 0);
     scheduled(0);
     scheduled(100);
-    assert.equal(viewer.timelinePosition, 0.1);
+    assert.equal(viewer.getTimelineTime(), 1000);
     viewer.pause();
     assert.equal(cancelled, 7);
     assert.deepEqual(stateChanges, [true, false]);
@@ -182,17 +212,17 @@ test('blip size and line scale clamp and are saved', () => {
 });
 
 test('playback uses the speed setting', () => {
-    const viewer = makeViewer(load('tracks.js', 'viewer.js'), { maxTimestamp: 100000, timelinePosition: 0, speed: 20 });
+    const viewer = makeViewer(load('tracks.js', 'viewer.js'), { maxTimestamp: 100000, selectedTime: 0, speed: 20 });
     viewer._advancePlayback(1000);
-    assert.equal(viewer.timelinePosition, 0.2);
+    assert.equal(viewer.getTimelineTime(), 20000);
 });
 
 test('play keeps the current position unless at the end', () => {
     const context = load('tracks.js', 'viewer.js');
     context.requestAnimationFrame = () => 1;
-    const viewer = makeViewer(context, { maxTimestamp: 10000, timelinePosition: 0.5 });
+    const viewer = makeViewer(context, { maxTimestamp: 10000, selectedTime: 5000 });
     viewer.play();
-    assert.equal(viewer.timelinePosition, 0.5);
+    assert.equal(viewer.getTimelineTime(), 5000);
 });
 
 test('speed clamps to 5x-40x and is saved', () => {
@@ -241,6 +271,7 @@ test('drops unit icons that are not displayed', async () => {
     const viewer = makeViewer(context);
     const base = { tick_id: 1, x: 0.5, y: 0.5, type: 'ground_model', color: '#174DFF', is_poi: 0 };
     context.fetch = async () => ({
+        ok: true,
         json: async () => ({
             ticks: [{ id: 1, timestamp: 1000 }],
             positions: ['Artillery', 'Pillbox', 'Airdefence', 'Mystery', 'MediumTank', 'Player']
@@ -282,14 +313,170 @@ test('loading events advances the cursor', async () => {
     const urls = [];
     context.fetch = async url => {
         urls.push(url);
-        return { json: async () => [{ timestamp: 1500, msg: 'm' }] };
+        const events = urls.length === 1 ? [{ timestamp: 1500, msg: 'm' }] : [];
+        return { ok: true, json: async () => events };
     };
     const viewer = makeViewer(context, { events: [], lastEventTimestamp: 0 });
     await viewer._loadEvents();
     assert.equal(viewer.lastEventTimestamp, 1501);
     await viewer._loadEvents();
     assert.match(urls[1], /since=1501/);
-    assert.equal(viewer.events.length, 2);
+    assert.equal(viewer.events.length, 1);
+});
+
+test('includes a later battle feed entry at the end of live and replay timelines', () => {
+    const viewer = makeViewer(load('tracks.js', 'viewer.js'), {
+        isLive: true,
+        maxTimestamp: 1000,
+        events: [{ timestamp: 1250, msg: 'Final event' }],
+    });
+    assert.equal(viewer.getTimelineMax(), 1250);
+    assert.equal(viewer._visibleEvents(viewer.getTimelineTime()).length, 1);
+    viewer.isLive = false;
+    assert.equal(viewer._visibleEvents(viewer.getTimelineTime()).length, 1);
+    viewer.setTimelineTime(1000);
+    assert.equal(viewer._visibleEvents(viewer.getTimelineTime()).length, 0);
+});
+
+test('an events request failure leaves live polling scheduled', async () => {
+    const context = load('tracks.js', 'viewer.js');
+    context.console = { error() {} };
+    const scheduled = [];
+    context.setTimeout = callback => scheduled.push(callback);
+    context.fetch = async () => { throw new TypeError('Disconnected'); };
+
+    let statusChecks = 0;
+    const viewer = makeViewer(context, {
+        isLive: true,
+        polling: true,
+        mapImage: {},
+        async _loadPositions() {},
+        async _checkMatchStatus() { statusChecks++; },
+    });
+    await viewer._poll();
+    assert.equal(statusChecks, 1);
+    assert.equal(scheduled.length, 1);
+
+    context.fetch = async () => ({ ok: true, json: async () => [{ timestamp: 1250, msg: 'Recovered' }] });
+    await scheduled.shift()();
+    assert.equal(statusChecks, 2);
+    assert.equal(viewer.events[0].msg, 'Recovered');
+    assert.equal(scheduled.length, 1);
+});
+
+test('retries the final updates before marking a live match ended', async () => {
+    const context = load('tracks.js', 'viewer.js');
+    context.fetch = async url => ({
+        ok: true,
+        json: async () => {
+            if (url.endsWith('/api/active')) return null;
+            if (url.endsWith('/api/status')) return { capturing: true };
+            return { ended_at: '2026-11-18T00:00:00', battle_type: 'ground', default_map: 'ground' };
+        },
+    });
+    let eventsLoaded = false;
+    let finished = false;
+    const viewer = makeViewer(context, {
+        isLive: true,
+        async _loadPositions() { return true; },
+        async _loadEvents() { return eventsLoaded; },
+        _showMatchEnded() { finished = true; },
+    });
+    await viewer._checkMatchStatus();
+    assert.equal(viewer.isLive, true);
+    assert.equal(finished, false);
+    eventsLoaded = true;
+    await viewer._checkMatchStatus();
+    assert.equal(viewer.isLive, false);
+    assert.equal(finished, true);
+});
+
+test('a finished match stays open while rewound and follows the next match on return to live', async () => {
+    const context = load('tracks.js', 'viewer.js');
+    context.window.location = { href: '/match/1' };
+    let activeChecks = 0;
+    context.fetch = async url => ({
+        ok: true,
+        json: async () => {
+            if (url.endsWith('/api/active')) {
+                activeChecks++;
+                return { id: 2 };
+            }
+            if (url.endsWith('/api/status')) return { capturing: true };
+            return { ended_at: '2026-11-18T00:00:00', battle_type: 'ground', default_map: 'ground' };
+        },
+    });
+    const viewer = makeViewer(context, {
+        isLive: true,
+        maxTimestamp: 20000,
+        selectedTime: 10000,
+        async _loadPositions() { return true; },
+        async _loadEvents() { return true; },
+        _showMatchEnded() {},
+    });
+    await viewer._checkMatchStatus();
+    assert.equal(viewer.isLive, false);
+    assert.equal(viewer.getTimelineTime(), 10000);
+    assert.equal(activeChecks, 0);
+    assert.equal(context.window.location.href, '/match/1');
+    viewer.returnToLive();
+    await viewer._checkMatchStatus();
+    assert.equal(context.window.location.href, '/live');
+});
+
+test('live map metadata follows the default until the viewer selects a map', () => {
+    const images = [];
+    const updates = [];
+    const viewer = makeViewer(load('tracks.js', 'viewer.js'), {
+        _loadMap() { images.push(this.mapKind); },
+        onMapUpdate(view, match) { updates.push([view.mapKind, match.air_map]); },
+    });
+    const match = { battle_type: 'ground', default_map: 'air', air_map: { map_id: 'air_map' } };
+    viewer._applyMapMetadata(match);
+    assert.equal(viewer.mapKind, 'air');
+    viewer.setMapKind('ground');
+    viewer._applyMapMetadata(match);
+    assert.equal(viewer.mapKind, 'ground');
+    assert.deepEqual(images, ['air', 'ground']);
+    assert.deepEqual(updates, [['air', match.air_map], ['ground', match.air_map]]);
+});
+
+test('keeps old squad and allied death markers in replay without showing future deaths', () => {
+    const context = load('tracks.js', 'settings.js', 'viewer.js');
+    const points = Array.from({ length: 20 }, (_, i) => ({ t: i * 500 }));
+    const deaths = [];
+    const trails = [];
+    const viewer = makeViewer(context, {
+        maxTimestamp: 100000,
+        trail: 30,
+        filters: { squad: true, ally: true, player: true, enemy: true },
+        tracks: ['squad', 'ally', 'player', 'enemy'].map(category => ({ category, points })),
+        visiblePois: [],
+        mapImage: {},
+        ctx: {
+            setTransform() {}, fillRect() {}, save() {}, translate() {}, scale() {}, drawImage() {}, restore() {},
+        },
+        _render: context.window.MatchViewer.prototype._render,
+        _addTrack() {},
+        _drawFades(fades) { trails.push(fades.size); },
+        _drawDeath(category) { deaths.push(category); },
+    });
+    viewer._render();
+    assert.deepEqual(deaths, []);
+    viewer.setShowAllFriendlyDeaths(true);
+    assert.deepEqual(deaths, ['squad', 'ally']);
+    assert.deepEqual(trails, [0, 0]);
+    assert.equal(JSON.parse(context.localStorage.getItem('wtp.viewer')).showAllFriendlyDeaths, true);
+    deaths.length = 0;
+    viewer.setFilter('ally', false);
+    assert.deepEqual(deaths, ['squad']);
+    deaths.length = 0;
+    viewer.setTimelineTime(14000);
+    assert.deepEqual(deaths, []);
+    viewer.setTimelineTime(100000);
+    assert.deepEqual(deaths, ['squad']);
+    viewer.setShowAllFriendlyDeaths(false);
+    assert.deepEqual(deaths, ['squad']);
 });
 
 test('reset view centers the square map in a wide canvas', () => {

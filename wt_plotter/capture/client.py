@@ -32,7 +32,19 @@ class TelemetryClient:
     def fetch_damage(self, last_id: int) -> list[dict] | None:
         """取 id 大于 last_id 的击杀与损伤播报。"""
         response = self._get(CAPTURE_ENDPOINTS.hudmsg_url(last_id), CAPTURE_TIMEOUTS.async_hudmsg)
-        return response.json()["damage"] if response is not None else None
+        if response is None:
+            return None
+        try:
+            payload = response.json()
+        except requests.exceptions.JSONDecodeError:
+            return None
+        entries = payload.get("damage") if isinstance(payload, dict) else None
+        if not isinstance(entries, list):
+            return None
+        return [
+            entry for entry in entries
+            if isinstance(entry, dict) and type(entry.get("id")) is int and isinstance(entry.get("msg"), str)
+        ]
 
     def fetch_map_image(self) -> bytes | None:
         response = self._get(CAPTURE_ENDPOINTS.map_img_url, CAPTURE_TIMEOUTS.map_image)

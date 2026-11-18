@@ -43,6 +43,26 @@ def test_index_empty(client):
     assert client.get("/").status_code == 200
 
 
+def test_index_groups_and_filters_by_local_start_date(client, conn):
+    dates = ("2026-11-17T23:55:00", "2026-11-18T00:05:00", "2026-11-18T15:00:00")
+    older, first, latest = [db.start_match(conn, MAP_HASH) for _ in dates]
+    with conn:
+        conn.executemany(
+            "UPDATE matches SET started_at = ? WHERE id = ?", zip(dates, (older, first, latest))
+        )
+
+    overview = client.get("/").text
+    assert overview.index('datetime="2026-11-18"') < overview.index('datetime="2026-11-17"')
+    numbers = [f'<span class="match-number">#{match_id}</span>' for match_id in (latest, first, older)]
+    assert [overview.index(number) for number in numbers] == sorted(overview.index(number) for number in numbers)
+
+    filtered = client.get("/", query_string={"date": "2026-11-18"}).text
+    assert 'name="date" value="2026-11-18"' in filtered
+    assert numbers[0] in filtered and numbers[1] in filtered and numbers[2] not in filtered
+    empty = client.get("/", query_string={"date": "2026-11-16"}).text
+    assert translate("en", "index.no_matches_on_date") in empty
+
+
 def test_api_matches(client, match_id):
     match, = client.get("/api/matches").json
     assert match["id"] == match_id
@@ -169,11 +189,17 @@ def test_default_map_follows_first_sortie(client, conn, match_id, army, vehicle,
     _sortie(conn, match_id, army, vehicle)
     for path in (f"/match/{match_id}", "/live"):
         assert 'data-default-map="ground"' in client.get(path).text
+    metadata = client.get(f"/api/match/{match_id}").json
+    assert metadata["air_map"] is None
+    assert metadata["default_map"] == "ground"
     db.set_air_map(conn, match_id, AIR_MAP_HASH)
     for path in (f"/match/{match_id}", "/live"):
         text = client.get(path).text
         assert f'data-default-map="{expected}"' in text
         assert 'data-has-air-map="true"' in text
+    metadata = client.get(f"/api/match/{match_id}").json
+    assert metadata["air_map"]["map_id"] == AIR_MAP_ID
+    assert metadata["default_map"] == expected
 
 
 def test_events_since(client, conn, match_id):
@@ -192,7 +218,19 @@ def test_mode_follows_first_sortie(client, conn, match_id, army, vehicle, mode):
     assert summary["mode"] == mode
     icon = "✈️" if mode == "air" else "🚜"
     assert f'<span class="match-map">{icon} ' in client.get("/").text
-    assert f'<span class="match-sub">{icon} ' in client.get(f"/match/{match_id}").text
+    assert f'id="match-map-title">{icon} ' in client.get(f"/match/{match_id}").text
+
+
+def test_shared_timeline_and_friendly_death_toggle_in_live_and_replay(client, conn, match_id):
+    control = 'id="show-all-friendly-deaths"'
+    live = client.get("/live").text
+    db.end_match(conn, match_id)
+    replay = client.get(f"/match/{match_id}").text
+    for text in (live, replay):
+        assert control in text
+        assert 'id="timeline-slider"' in text
+    assert 'id="timeline-live"' in live
+    assert 'id="timeline-live"' not in replay
 
 
 def test_mode_without_air_map_is_map_type(client, conn, match_id):

@@ -7,6 +7,7 @@ from PIL import Image
 import pytest
 
 from wt_plotter.capture import tracker
+from wt_plotter.config import CAPTURE_SETTINGS
 from wt_plotter.maps import lookup
 from wt_plotter.maps.dhash import compute_dhash
 from wt_plotter.maps.table import MAPS, UNKNOWN_MAP
@@ -274,6 +275,18 @@ def test_return_to_ground_is_not_air_view(setup, conn, obj):
     assert all(p["x_ground"] is None for p in bundle["positions"][8:])
 
 
+def test_late_capture_zones_keep_ground_view(setup, conn, obj, zone_frames):
+    match, _, _ = setup
+    ground, air = zone_frames
+    shared = obj(0.1 / 0.75, 0.2 / 0.75, type="capture_zone")
+    ground = [shared, *ground]
+    air = [shared, *air]
+    for now, zones in enumerate((ground[:1], ground[:2], ground, ground[1:], ground, air, ground)):
+        match.tick(now, True, {"army": "tank"}, zones)
+    ticks = db.get_positions_bundle(conn, match.match_id, 0)["ticks"]
+    assert [tick["is_player_air_view"] for tick in ticks] == [0, 0, 0, 0, 0, 1, 0]
+
+
 def _damage(game_id, msg="A (Tiger E) destroyed B (M4A3)"):
     return {"id": game_id, "msg": msg, "sender": "", "enemy": False, "mode": "", "time": 90}
 
@@ -337,17 +350,22 @@ def half_loaded(png: bytes) -> bytes:
     return buffer.getvalue()
 
 
-def test_half_loaded_map_waits_for_full_image(setup, conn, map_png, obj):
+@pytest.mark.parametrize("partial_image", [False, True])
+def test_missing_or_partial_map_waits_for_full_image(setup, conn, map_png, obj, partial_image):
     match, fetch, maps_dir = setup
-    fetch.return_value = half_loaded(map_png(GROUND))
+    original = map_png(GROUND)
+    fetch.return_value = half_loaded(original) if partial_image else None
     match.tick(0, True, None, [obj(0.5, 0.5)])
     assert db.get_active_match(conn).map_hash == ""
     assert not maps_dir.exists()
-    fetch.return_value = map_png(GROUND)
-    match.tick(1, True, None, [obj(0.5, 0.5)])
+    retry_interval = CAPTURE_SETTINGS.map_retry_interval
+    fetch.return_value = original
+    match.tick(retry_interval / 2, True, None, [obj(0.5, 0.5)])
+    assert fetch.call_count == 1
+    match.tick(retry_interval, True, None, [obj(0.5, 0.5)])
     assert lookup.lookup_map(db.get_active_match(conn).map_hash).map_id == GROUND
-    assert (maps_dir / f"{GROUND}.png").read_bytes() == fetch.return_value
-    match.tick(2, True, None, None)
+    assert (maps_dir / f"{GROUND}.png").read_bytes() == original
+    match.tick(retry_interval * 2, True, None, None)
     assert fetch.call_count == 2
 
 
@@ -359,3 +377,14 @@ def test_half_loaded_map_does_not_split_match(setup, map_png):
     fetch.return_value = half_loaded(map_png(AIR))
     match.tick(1, False, None, None)
     assert match.match_id == match_id
+
+
+def test_restored_image_with_invalid_telemetry_does_not_split_pending_match(setup, conn, map_png):
+    match, fetch, _ = setup
+    match.tick(0, True, None, None)
+    match_id = match.match_id
+    fetch.return_value = map_png(GROUND)
+    match.tick(1, False, None, None)
+    match.tick(CAPTURE_SETTINGS.map_retry_interval, True, None, None)
+    assert [stored.id for stored in db.get_all_matches(conn)] == [match_id]
+    assert db.get_match(conn, match_id).map_hash == compute_dhash(fetch.return_value)

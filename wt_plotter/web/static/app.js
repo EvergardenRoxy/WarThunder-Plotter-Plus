@@ -67,17 +67,34 @@ if (mapCanvas) {
     const currentTime = document.getElementById('timeline-current');
     const maxTime = document.getElementById('timeline-max');
     const playButton = document.getElementById('timeline-play');
+    const liveButton = document.getElementById('timeline-live');
+    const mapKindControl = document.getElementById('map-kind');
+    const mapKindButtons = mapKindControl.querySelectorAll('[data-map-kind]');
+    const mapTitle = document.getElementById('match-map-title');
+    const mapLabel = document.getElementById('match-map-label');
+    const airMapLabel = document.getElementById('match-air-map-label');
+    const markMapKind = view => {
+        for (const button of mapKindButtons) {
+            button.setAttribute('aria-pressed', String(button.dataset.mapKind === view.mapKind));
+        }
+    };
     const viewer = new MatchViewer(mapCanvas.id, Number(mapCanvas.dataset.matchId), {
         isLive: mapCanvas.dataset.live === 'true',
         battleType: mapCanvas.dataset.battleType,
         mapKind: mapCanvas.dataset.defaultMap,
         pollInterval: 500,
         onRender(view) {
-            if (!timeline) return;
             const max = view.getTimelineMax();
-            timeline.value = view.timelinePosition * 100;
-            currentTime.textContent = view.formatTime(max * view.timelinePosition);
+            const time = view.getTimelineTime();
+            const label = view.formatTime(time);
+            timeline.max = max;
+            timeline.value = time;
+            timeline.disabled = max === 0;
+            timeline.setAttribute('aria-valuetext', label);
+            currentTime.textContent = label;
             maxTime.textContent = view.formatTime(max);
+            playButton.disabled = max === 0 || (view.isLive && view.isAtLatest);
+            if (liveButton) liveButton.disabled = view.isAtLatest;
         },
         onEvents(events) {
             const feed = document.getElementById('event-feed');
@@ -98,20 +115,25 @@ if (mapCanvas) {
         },
         onPlayStateChange(isPlaying) {
             playButton.textContent = isPlaying ? t('viewer.pause') : t('viewer.play');
+        },
+        onMapUpdate(view, match) {
+            mapKindControl.hidden = !match.air_map;
+            airMapLabel.hidden = !match.air_map;
+            for (const [element, text] of [
+                [mapTitle, match.map_title], [mapLabel, match.map_label], [airMapLabel, match.air_map_label],
+            ]) {
+                if (element.textContent !== text) element.textContent = text;
+            }
+            markMapKind(view);
         }
     });
 
-    const mapKindButtons = document.querySelectorAll('[data-map-kind]');
-    const markMapKind = () => {
-        for (const button of mapKindButtons) button.classList.toggle('active', button.dataset.mapKind === viewer.mapKind);
-    };
     for (const button of mapKindButtons) {
         button.addEventListener('click', () => {
             viewer.setMapKind(button.dataset.mapKind);
-            markMapKind();
+            markMapKind(viewer);
         });
     }
-    markMapKind();
 
     document.getElementById('zoom-in').addEventListener('click', () => viewer.zoomIn());
     document.getElementById('zoom-out').addEventListener('click', () => viewer.zoomOut());
@@ -121,6 +143,9 @@ if (mapCanvas) {
         checkbox.checked = viewer.filters[checkbox.dataset.filter];
         checkbox.addEventListener('change', () => viewer.setFilter(checkbox.dataset.filter, checkbox.checked));
     }
+    const friendlyDeaths = document.getElementById('show-all-friendly-deaths');
+    friendlyDeaths.checked = viewer.showAllFriendlyDeaths;
+    friendlyDeaths.addEventListener('change', () => viewer.setShowAllFriendlyDeaths(friendlyDeaths.checked));
     const bindSlider = (id, value, setter, format = text => text) => {
         const slider = document.getElementById(id);
         const label = document.getElementById(`${id}-value`);
@@ -140,14 +165,15 @@ if (mapCanvas) {
     }
     trail.addEventListener('change', () => viewer.setTrail(Number(trail.value)));
 
-    if (playButton) bindSlider('speed-slider', viewer.speed, value => viewer.setSpeed(value), n => t('viewer.speed_value', { n }));
+    bindSlider('speed-slider', viewer.speed, value => viewer.setSpeed(value), n => t('viewer.speed_value', { n }));
 
-    playButton?.addEventListener('click', () => {
+    playButton.addEventListener('click', () => {
         if (viewer.isPlaying) viewer.pause();
         else viewer.play();
     });
-    timeline?.addEventListener('input', () => {
+    timeline.addEventListener('input', () => {
         viewer.pause();
-        viewer.setTimeline(Number(timeline.value) / 100);
+        viewer.setTimelineTime(timeline.valueAsNumber);
     });
+    liveButton?.addEventListener('click', () => viewer.returnToLive());
 }
