@@ -21,6 +21,6 @@ erDiagram
 
 ## Reads and cleanup
 
-`GET /api/match/<id>/positions` returns `ticks` and `positions`. Integer `since` values are milliseconds and decimal values are seconds. The filter includes the given timestamp. The viewer joins the returned arrays and uses mapped ground coordinates when available. `GET /api/match/<id>/events?since=<ms>` returns feed messages in time order, without the untranslated raw line the game sends on a disconnect (ending in `NET_PLAYER_DISCONNECT_FROM_GAME`).
+`GET /api/match/<id>/positions` returns `ticks` and `positions`. Integer `since` values are milliseconds and decimal values are seconds. The filter includes the given timestamp. The viewer joins the returned arrays and uses mapped ground coordinates when available. `GET /api/match/<id>/events?since=<ms>` returns feed messages in time order. It localizes departure messages and returns one departure per player at each timestamp.
 
 The app uses WAL and a database connection per capture thread or web request. Deleting a finished match removes its feed messages, positions, ticks, and match row in one transaction, then requests incremental vacuum. Existing databases retain their SQLite auto-vacuum mode. At capture startup, matches left active by an interrupted run are marked ended.

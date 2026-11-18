@@ -9,11 +9,13 @@ function makeViewer(context, properties = {}) {
         battleType: 'ground',
         mapKind: 'ground',
         selectedTime: null,
+        selectedEvent: null,
         isPlaying: false,
         lastTimestamp: 0,
         maxTimestamp: 0,
         lastEventTimestamp: 0,
         events: [],
+        ticks: [],
         positionCount: 0,
         positions: [],
         pois: [],
@@ -165,13 +167,11 @@ class FakePath {
     lineTo(x, y) { this.ops.push(['L', x, y]); }
 }
 
-test('segments fade linearly from the start of the trail window', () => {
-    const viewer = makeViewer(load('tracks.js', 'settings.js', 'viewer.js'), { trail: 30 });
-    assert.equal(viewer._fadeAlpha({ t: 0 }, { t: 1000 }, 0), 500 / 30000);
-    assert.equal(viewer._fadeAlpha({ t: 14000 }, { t: 16000 }, 0), 0.5);
-    assert.equal(viewer._fadeAlpha({ t: 29000 }, { t: 31000 }, 0), 1);
-    viewer.trail = 0;
-    assert.equal(viewer._fadeAlpha({ t: 0 }, { t: 1000 }, 0), 1);
+test('older trail segments fade towards a visible minimum', () => {
+    const viewer = makeViewer(load('tracks.js', 'settings.js', 'viewer.js'));
+    assert.equal(viewer._fadeAlpha({ t: 0 }, { t: 0 }, 0, 30000), 0.1);
+    assert.equal(viewer._fadeAlpha({ t: 14000 }, { t: 16000 }, 0, 30000), 0.55);
+    assert.equal(viewer._fadeAlpha({ t: 29000 }, { t: 31000 }, 0, 30000), 1);
 });
 
 test('each segment joins the path of its fade level', () => {
@@ -180,9 +180,9 @@ test('each segment joins the path of its fade level', () => {
     const viewer = makeViewer(context, { trail: 10, width: 100, height: 100 });
     const points = Array.from({ length: 11 }, (_, i) => ({ t: i * 1000, x: i / 10, y: 0 }));
     const levels = [];
-    viewer._addTrack(levels, points, 0, 10, 0);
-    assert.deepEqual(Object.keys(levels).map(Number), [2, 6, 10, 14, 18, 22, 26, 30, 34, 38]);
-    assert.deepEqual(levels[2].ops, [['M', 0, 0], ['L', 10, 0]]);
+    viewer._addTrack(levels, points, 0, 10, 0, 10000);
+    assert.deepEqual(Object.keys(levels).map(Number), [6, 9, 13, 17, 20, 24, 27, 31, 35, 38]);
+    assert.deepEqual(levels[6].ops, [['M', 0, 0], ['L', 10, 0]]);
     assert.deepEqual(levels[38].ops, [['M', 90, 0], ['L', 100, 0]]);
 });
 
@@ -192,7 +192,7 @@ test('segments of one level form a continuous line and gaps are skipped', () => 
     const viewer = makeViewer(context, { trail: 0, width: 100, height: 100 });
     const points = [0, 250, 500, 5000, 5250].map((t, i) => ({ t, x: i / 10, y: 0 }));
     const levels = [];
-    viewer._addTrack(levels, points, 0, 4, 0);
+    viewer._addTrack(levels, points, 0, 4, -10000, 10000);
     assert.deepEqual(Object.keys(levels).map(Number), [40]);
     assert.deepEqual(levels[40].ops, [['M', 0, 0], ['L', 10, 0], ['L', 20, 0], ['M', 30, 0], ['L', 40, 0]]);
 });
@@ -225,14 +225,16 @@ test('play keeps the current position unless at the end', () => {
     assert.equal(viewer.getTimelineTime(), 5000);
 });
 
-test('speed clamps to 5x-40x and is saved', () => {
+test('rounds playback speeds to a supported step and saves the choice', () => {
     const context = load('tracks.js', 'settings.js', 'viewer.js');
     const viewer = makeViewer(context);
     viewer.setSpeed(100);
-    assert.equal(viewer.speed, 40);
-    viewer.setSpeed(1);
-    assert.equal(viewer.speed, 5);
-    assert.equal(JSON.parse(context.localStorage.getItem('wtp.viewer')).speed, 5);
+    assert.equal(viewer.speed, 50);
+    viewer.setSpeed(0.1);
+    assert.equal(viewer.speed, 0.5);
+    viewer.setSpeed(12);
+    assert.equal(viewer.speed, 10);
+    assert.equal(JSON.parse(context.localStorage.getItem('wtp.viewer')).speed, 10);
 });
 
 test('air map uses raw coordinates of air-view points only', () => {
@@ -301,14 +303,19 @@ test('finds the marker under the pointer', () => {
     assert.equal(viewer._markerAt(140, 100), null);
 });
 
-test('visible events are newest first up to the cutoff', () => {
-    const viewer = makeViewer(load('tracks.js', 'viewer.js'), {
-        events: [{ timestamp: 1000, msg: 'a' }, { timestamp: 2000, msg: 'b' }, { timestamp: 5000, msg: 'c' }],
+test('death markers expose their unit type at their zoomed and panned position', () => {
+    const context = load('tracks.js', 'viewer.js');
+    context.Path2D = class { moveTo() {} lineTo() {} };
+    const viewer = makeViewer(context, {
+        width: 400, height: 400, zoom: 2, panX: -100, panY: -50, blipSize: 0.5, markers: [],
+        _strokeMark() {},
     });
-    assert.deepEqual(viewer._visibleEvents(3000).map(e => e.timestamp), [2000, 1000]);
+    viewer._drawDeath('ally', { x: 0.25, y: 0.5, icon: 'HeavyTank' });
+    assert.equal(viewer._markerAt(102, 352).icon, 'HeavyTank');
+    assert.equal(viewer._markerAt(90, 350), null);
 });
 
-test('loading events advances the cursor', async () => {
+test('loading events advances the cursor and publishes new messages even during rewind', async () => {
     const context = load('tracks.js', 'viewer.js');
     const urls = [];
     context.fetch = async url => {
@@ -316,12 +323,18 @@ test('loading events advances the cursor', async () => {
         const events = urls.length === 1 ? [{ timestamp: 1500, msg: 'm' }] : [];
         return { ok: true, json: async () => events };
     };
-    const viewer = makeViewer(context, { events: [], lastEventTimestamp: 0 });
+    const delivered = [];
+    const viewer = makeViewer(context, {
+        isLive: true, selectedTime: 1000,
+        onEvents(events) { delivered.push(...events); },
+    });
     await viewer._loadEvents();
     assert.equal(viewer.lastEventTimestamp, 1501);
     await viewer._loadEvents();
     assert.match(urls[1], /since=1501/);
     assert.equal(viewer.events.length, 1);
+    assert.deepEqual(delivered, [{ timestamp: 1500, msg: 'm' }]);
+    assert.equal(viewer.getTimelineTime(), 1000);
 });
 
 test('includes a later battle feed entry at the end of live and replay timelines', () => {
@@ -331,11 +344,35 @@ test('includes a later battle feed entry at the end of live and replay timelines
         events: [{ timestamp: 1250, msg: 'Final event' }],
     });
     assert.equal(viewer.getTimelineMax(), 1250);
-    assert.equal(viewer._visibleEvents(viewer.getTimelineTime()).length, 1);
     viewer.isLive = false;
-    assert.equal(viewer._visibleEvents(viewer.getTimelineTime()).length, 1);
+    assert.equal(viewer.getTimelineTime(), 1250);
     viewer.setTimelineTime(1000);
-    assert.equal(viewer._visibleEvents(viewer.getTimelineTime()).length, 0);
+    assert.equal(viewer.getTimelineTime(), 1000);
+    assert.equal(viewer.events.length, 1);
+});
+
+test('selecting a feed entry pauses at its exact time even when it was at the live edge', () => {
+    const context = load('tracks.js', 'viewer.js');
+    context.cancelAnimationFrame = () => {};
+    const first = { timestamp: 2000, msg: 'First at this time' };
+    const second = { timestamp: 2000, msg: 'Second at this time' };
+    const selections = [];
+    const viewer = makeViewer(context, {
+        isLive: true,
+        isPlaying: true,
+        events: [first, second],
+        _render() { selections.push(this.selectedEvent); },
+    });
+    viewer.seekToEvent(first);
+    assert.equal(viewer.isPlaying, false);
+    assert.equal(viewer.isAtLatest, false);
+    viewer.events.push({ timestamp: 3100, msg: 'New event' });
+    assert.equal(viewer.getTimelineTime(), 2000);
+    viewer.seekToEvent(second);
+    assert.deepEqual(selections, [first, second]);
+    viewer.returnToLive();
+    assert.equal(viewer.selectedEvent, null);
+    assert.equal(viewer.getTimelineTime(), 3100);
 });
 
 test('an events request failure leaves live polling scheduled', async () => {
@@ -468,7 +505,7 @@ test('keeps old squad and allied death markers in replay without showing future 
     assert.deepEqual(trails, [0, 0]);
     assert.equal(JSON.parse(context.localStorage.getItem('wtp.viewer')).showAllFriendlyDeaths, true);
     deaths.length = 0;
-    viewer.setFilter('ally', false);
+    viewer.setFilters({ ally: false });
     assert.deepEqual(deaths, ['squad']);
     deaths.length = 0;
     viewer.setTimelineTime(14000);

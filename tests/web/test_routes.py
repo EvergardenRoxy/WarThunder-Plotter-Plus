@@ -209,6 +209,23 @@ def test_events_since(client, conn, match_id):
     assert response.json == [{"timestamp": 3000, "msg": "second"}]
 
 
+@pytest.mark.parametrize("lang, message", [("zh", "Pilot 已离开战局"), ("en", "Pilot left the match")])
+def test_events_localize_departures_in_old_recordings(client, conn, match_id, lang, message):
+    raw = "Pilottd! kd?NET_PLAYER_DISCONNECT_FROM_GAME"
+    db.add_events(conn, match_id, [
+        db.EventRecord(1.0, 1, "Pilot已掉线。", "{}"),
+        db.EventRecord(1.0, 2, raw, "{}"),
+        db.EventRecord(1.0, 3, "Other message", "{}"),
+        db.EventRecord(2.0, 4, raw, "{}"),
+    ])
+    client.post("/api/language", json={"language": lang})
+    assert client.get(f"/api/match/{match_id}/events").json == [
+        {"timestamp": 1000, "msg": message},
+        {"timestamp": 1000, "msg": "Other message"},
+        {"timestamp": 2000, "msg": message},
+    ]
+
+
 @pytest.mark.parametrize("army, vehicle, mode", [("air", "f-4s", "air"), ("tank", "germ_hummel", "ground")])
 def test_mode_follows_first_sortie(client, conn, match_id, army, vehicle, mode):
     # 混合地图上第一次出击就是飞机的比赛是空战，列表按空战显示。
@@ -216,9 +233,33 @@ def test_mode_follows_first_sortie(client, conn, match_id, army, vehicle, mode):
     db.set_air_map(conn, match_id, AIR_MAP_HASH)
     [summary] = client.get("/api/matches").json
     assert summary["mode"] == mode
-    icon = "✈️" if mode == "air" else "🚜"
-    assert f'<span class="match-map">{icon} ' in client.get("/").text
-    assert f'id="match-map-title">{icon} ' in client.get(f"/match/{match_id}").text
+    label = translate("en", f"battle_type.{mode}")
+    assert f'<span class="match-kind">{label}</span>' in client.get("/").text
+    assert f'id="match-mode-title">{label}</span>' in client.get(f"/match/{match_id}").text
+
+
+def test_history_filters_combine_map_name_date_and_effective_battle_type(client, conn):
+    ground = db.start_match(conn, MAP_HASH)
+    air = db.start_match(conn, MAP_HASH)
+    older_air = db.start_match(conn, MAP_HASH)
+    for match_id, army, vehicle in ((ground, "tank", "germ_hummel"), (air, "air", "f-4s"), (older_air, "air", "f-4s")):
+        _sortie(conn, match_id, army, vehicle)
+        db.set_air_map(conn, match_id, AIR_MAP_HASH)
+    with conn:
+        conn.executemany("UPDATE matches SET started_at = ? WHERE id = ?", [
+            ("2026-11-18T10:00:00", ground),
+            ("2026-11-18T10:15:00", air),
+            ("2026-11-17T10:00:00", older_air),
+        ])
+    response = client.get("/", query_string={"date": "2026-11-18", "map": "  NoRmAnDy  ", "mode": "air"})
+    assert response.status_code == 200
+    assert f'<span class="match-number">#{air}</span>' in response.text
+    assert f'<span class="match-number">#{ground}</span>' not in response.text
+    assert f'<span class="match-number">#{older_air}</span>' not in response.text
+    assert 'value="air" selected' in response.text
+    assert '<time datetime="2026-11-18T10:15:00"' in response.text
+    empty = client.get("/", query_string={"mode": "naval", "map": "Normandy"})
+    assert translate("en", "index.no_filtered_matches") in empty.text
 
 
 def test_shared_timeline_and_friendly_death_toggle_in_live_and_replay(client, conn, match_id):
@@ -229,6 +270,10 @@ def test_shared_timeline_and_friendly_death_toggle_in_live_and_replay(client, co
     for text in (live, replay):
         assert control in text
         assert 'id="timeline-slider"' in text
+        assert 'id="follow-feed"' in text
+        assert 'id="own-vehicle-name"' in text
+        assert text.index('class="display-panel"') < text.index('class="feed-panel"')
+        assert translate("en", "viewer.crew_knocked_out") in text
     assert 'id="timeline-live"' in live
     assert 'id="timeline-live"' not in replay
 

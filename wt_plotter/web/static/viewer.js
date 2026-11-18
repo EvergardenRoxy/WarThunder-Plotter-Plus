@@ -44,16 +44,19 @@ const VIEW_STYLE = Object.freeze({
     fadeLevels: 40,
     blipRange: [0.25, 1.5],
     lineScaleRange: [0.5, 2],
-    speedRange: [5, 40],
-    defaults: { trail: 30, blipSize: 0.5, lineScale: 1, speed: 10, showAllFriendlyDeaths: false },
+    speedOptions: Object.freeze([0.5, 1, 2, 5, 8, 10, 15, 20, 25, 40, 50]),
+    defaults: { trail: 30, blipSize: 0.5, lineScale: 1, speed: 10, showAllFriendlyDeaths: false, followFeed: true },
     settingsKey: 'wtp.viewer',
 });
 
 const clamp = (value, [min, max]) => Math.max(min, Math.min(max, value));
+const nearestSpeed = value => VIEW_STYLE.speedOptions.reduce((best, speed) =>
+    Math.abs(speed - value) < Math.abs(best - value) ? speed : best
+);
 
 class MatchViewer {
     constructor(canvasId, matchId, {
-        isLive = false, battleType = 'ground', mapKind = 'ground', pollInterval = 500,
+        isLive = false, battleType = 'ground', mapKind = 'ground', pollInterval = 500, placeholderVehicles = [],
         onRender, onPlayStateChange, onEvents, onMapUpdate,
     } = {}) {
         this.canvas = document.getElementById(canvasId);
@@ -70,7 +73,8 @@ class MatchViewer {
         this.onMapUpdate = onMapUpdate;
         this.events = [];
         this.lastEventTimestamp = 0;
-        this.feedKey = '';
+        this.selectedEvent = null;
+        this.ticks = [];
         this.positions = [];
         this.positionCount = 0;
         this.pois = [];
@@ -82,6 +86,7 @@ class MatchViewer {
         this.pollTimer = null;
         this.liveArmyType = 'tank';
         this.liveVehicleType = '';
+        this.placeholderVehicles = placeholderVehicles;
         this.zoom = 1.0;
         this.minZoom = 0.5;
         this.maxZoom = 5.0;
@@ -96,8 +101,9 @@ class MatchViewer {
         this.blipSize = settings.blipSize;
         this.lineScale = settings.lineScale;
         this.trail = settings.trail;
-        this.speed = settings.speed;
+        this.speed = nearestSpeed(settings.speed);
         this.showAllFriendlyDeaths = settings.showAllFriendlyDeaths;
+        this.followFeed = settings.followFeed;
         // null 表示跟随最新时刻，倒带时保存固定的比赛内毫秒数。
         this.selectedTime = null;
         this.maxTimestamp = 0;
@@ -207,8 +213,8 @@ class MatchViewer {
         if (!hit) return;
         tooltip.textContent = this._markerLabel(hit);
         const wrapper = this.canvas.parentElement.getBoundingClientRect();
-        tooltip.style.left = `${e.clientX - wrapper.left + 12}px`;
-        tooltip.style.top = `${e.clientY - wrapper.top + 12}px`;
+        tooltip.style.left = `${Math.min(e.clientX - wrapper.left + 12, wrapper.width - tooltip.offsetWidth)}px`;
+        tooltip.style.top = `${Math.min(e.clientY - wrapper.top + 12, wrapper.height - tooltip.offsetHeight)}px`;
     }
 
     // 缩放为 1 时让地图居中的平移量。
@@ -330,14 +336,15 @@ class MatchViewer {
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const { ticks = [], positions = [] } = await resp.json();
 
-            if (positions.length > 0) {
+            if (ticks.length > 0) {
                 const tickMap = new Map(ticks.map(tick => [tick.id, tick]));
+                for (const tick of ticks) this.ticks.push(tick);
+                this.maxTimestamp = Math.max(this.maxTimestamp, ticks.at(-1).timestamp);
+                this.lastTimestamp = this.maxTimestamp + 1;
                 for (const pos of positions) {
                     const tick = tickMap.get(pos.tick_id);
                     if (!tick) continue;
 
-                    this.maxTimestamp = Math.max(this.maxTimestamp, tick.timestamp);
-                    this.lastTimestamp = Math.max(this.lastTimestamp, tick.timestamp + 1);
                     if (!pos.is_poi) this.positionCount++;
                     // 不显示的单位（火炮、碉堡、舰船等）直接丢弃。
                     if (!pos.is_poi && !this._isShownUnit(pos)) continue;
@@ -345,7 +352,6 @@ class MatchViewer {
                     const merged = {
                         ...pos,
                         timestamp: tick.timestamp,
-                        army_type: tick.army_type,
                         vehicle_type: tick.vehicle_type,
                         is_player_air: tick.is_player_air,
                         is_player_air_view: tick.is_player_air_view,
@@ -377,15 +383,10 @@ class MatchViewer {
         if (events.length > 0) {
             for (const event of events) this.events.push(event);
             this.lastEventTimestamp = events.at(-1).timestamp + 1;
+            this.onEvents?.(events, this);
             this._render();
         }
         return true;
-    }
-
-    // 时间轴当前时刻之前的播报，最新的在前。
-    _visibleEvents(cutoff) {
-        const end = window.Tracks.lastIndexAtMost(this.events, cutoff, event => event.timestamp);
-        return this.events.slice(0, end + 1).reverse();
     }
 
     _startPolling() {
@@ -459,8 +460,8 @@ class MatchViewer {
         const statsEl = document.getElementById('stats');
         if (!statsEl) return;
 
-        const index = window.Tracks.lastIndexAtMost(this.positions, this.getTimelineTime(), pos => pos.timestamp);
-        const latest = this.positions[index];
+        const index = window.Tracks.lastIndexAtMost(this.ticks, this.getTimelineTime(), tick => tick.timestamp);
+        const latest = this.ticks[index];
         const followingLive = this.isLive && this.isAtLatest;
         const armyType = (followingLive ? this.liveArmyType : latest?.army_type) || 'tank';
         const vehicleType = (followingLive ? this.liveVehicleType : '') || latest?.vehicle_type || '';
@@ -470,11 +471,12 @@ class MatchViewer {
         mode.textContent = armyType === 'air' ? airLabel : t('viewer.ground');
         const counts = t('viewer.stats', { positions: this.positionCount, pois: this.poiCount });
         statsEl.replaceChildren(counts, document.createElement('br'), mode);
-        if (vehicleType) {
-            const vehicle = document.createElement('span');
-            vehicle.className = 'vehicle-name';
-            vehicle.textContent = this._vehicleName(vehicleType);
-            statsEl.append(document.createElement('br'), vehicle);
+        const vehicle = document.getElementById('own-vehicle-name');
+        const name = vehicleType && !this.placeholderVehicles.includes(vehicleType)
+            ? this._vehicleName(vehicleType) : t('viewer.vehicle_unavailable');
+        if (vehicle.textContent !== name) {
+            vehicle.textContent = name;
+            vehicle.title = name;
         }
     }
 
@@ -611,6 +613,7 @@ class MatchViewer {
         ctx.fillRect(0, 0, w, h);
 
         const cutoff = this.getTimelineTime();
+        const trailDuration = this.trail ? this.trail * 1000 : Math.max(1, cutoff);
         const { capture, respawn } = this._getPoiClusters(cutoff);
         this.poiCount = capture.length + respawn.length;
         if (this.filters.capture_zone) {
@@ -631,7 +634,7 @@ class MatchViewer {
             const inTrail = start <= end;
             if (inTrail) {
                 if (!fades.has(category)) fades.set(category, []);
-                this._addTrack(fades.get(category), points, start, end, cutoff - this.trail * 1000);
+                this._addTrack(fades.get(category), points, start, end, cutoff - trailDuration, trailDuration);
                 if (cutoff - point.t <= VIEW_STYLE.aliveWindow) {
                     current.push({ category, point, previous: points[end - 1] });
                 }
@@ -648,16 +651,6 @@ class MatchViewer {
 
         ctx.restore();
         this.onRender?.(this);
-        this._emitEvents(cutoff);
-    }
-
-    // 播报列表有变化时才通知页面重绘。
-    _emitEvents(cutoff) {
-        const visible = this._visibleEvents(cutoff);
-        const key = `${visible.length}:${visible[0]?.timestamp}`;
-        if (key === this.feedKey) return;
-        this.feedKey = key;
-        this.onEvents?.(visible);
     }
 
     // 轨迹已结束且不可能再接上（超过 maxGap），并且该阵营总在地图上可见。
@@ -674,21 +667,21 @@ class MatchViewer {
         return point.t - previous.t > VIEW_STYLE.gapLine;
     }
 
-    // 一小段线的不透明度：按中点时刻在显示窗口内线性变化，显示全部时不淡化。
-    _fadeAlpha(previous, point, earliest) {
-        if (this.trail === 0) return 1;
-        return clamp(((previous.t + point.t) / 2 - earliest) / (this.trail * 1000), [0, 1]);
+    // 按线段中点的时间淡化，旧轨迹保留少量不透明度。
+    _fadeAlpha(previous, point, earliest, duration) {
+        const progress = clamp(((previous.t + point.t) / 2 - earliest) / duration, [0, 1]);
+        return 0.1 + progress * 0.9;
     }
 
     // 把轨迹的每一小段加入它所在档位的路径；levels[档位] 是该档所有线段合成的一条路径。
-    _addTrack(levels, points, start, end, earliest) {
+    _addTrack(levels, points, start, end, earliest, duration) {
         let lastLevel = -1;
         for (let i = start + 1; i <= end; i++) {
             if (this._isGap(points[i - 1], points[i])) {
                 lastLevel = -1;
                 continue;
             }
-            const level = Math.round(this._fadeAlpha(points[i - 1], points[i], earliest) * VIEW_STYLE.fadeLevels);
+            const level = Math.round(this._fadeAlpha(points[i - 1], points[i], earliest, duration) * VIEW_STYLE.fadeLevels);
             const path = levels[level] ??= new Path2D();
             if (level !== lastLevel) path.moveTo(points[i - 1].x * this.width, points[i - 1].y * this.height);
             path.lineTo(points[i].x * this.width, points[i].y * this.height);
@@ -712,7 +705,6 @@ class MatchViewer {
             for (const [lineWidth, color] of [[halo, VIEW_STYLE.haloColor], [width, VIEW_STYLE.teamColors[category]]]) {
                 layer.lineWidth = lineWidth;
                 levels.forEach((path, level) => {
-                    if (level === 0) return;
                     layer.globalCompositeOperation = 'destination-out';
                     layer.globalAlpha = 1;
                     layer.strokeStyle = '#000';
@@ -792,19 +784,23 @@ class MatchViewer {
             ctx.lineWidth = style.playerRing / this.zoom;
             ctx.stroke();
         }
+        this._registerMarker(point, x, y, size / 2);
+    }
+
+    _registerMarker(point, x, y, radius) {
         this.markers.push({
-            sx: x * this.zoom + this.panX, sy: y * this.zoom + this.panY, r: size * this.zoom / 2,
+            sx: x * this.zoom + this.panX, sy: y * this.zoom + this.panY, r: radius * this.zoom,
             icon: point.icon, vehicle: point.vehicle,
         });
     }
 
-    // 返回屏幕坐标下最近的当前位置标记。
+    // 返回屏幕坐标下最近的单位标记。重合时选最上面绘制的一个。
     _markerAt(sx, sy) {
         let best = null;
         let bestDistance = Infinity;
         for (const marker of this.markers) {
             const distance = Math.hypot(marker.sx - sx, marker.sy - sy);
-            if (distance <= marker.r + VIEW_STYLE.hoverSlop && distance < bestDistance) {
+            if (distance <= marker.r + VIEW_STYLE.hoverSlop && distance <= bestDistance) {
                 best = marker;
                 bestDistance = distance;
             }
@@ -822,17 +818,18 @@ class MatchViewer {
         cross.moveTo(x + half, y - half);
         cross.lineTo(x - half, y + half);
         this._strokeMark(category, cross);
+        this._registerMarker(point, x, y, half * Math.SQRT2);
     }
 
     _saveSettings() {
         window.Settings.save(VIEW_STYLE.settingsKey, {
             trail: this.trail, blipSize: this.blipSize, lineScale: this.lineScale, speed: this.speed,
-            filters: this.filters, showAllFriendlyDeaths: this.showAllFriendlyDeaths,
+            filters: this.filters, showAllFriendlyDeaths: this.showAllFriendlyDeaths, followFeed: this.followFeed,
         });
     }
 
-    setFilter(category, enabled) {
-        this.filters[category] = enabled;
+    setFilters(filters) {
+        Object.assign(this.filters, filters);
         this._saveSettings();
         this._render();
     }
@@ -856,7 +853,12 @@ class MatchViewer {
     }
 
     setSpeed(speed) {
-        this.speed = clamp(speed, VIEW_STYLE.speedRange);
+        this.speed = nearestSpeed(speed);
+        this._saveSettings();
+    }
+
+    setFollowFeed(enabled) {
+        this.followFeed = enabled;
         this._saveSettings();
     }
 
@@ -903,8 +905,14 @@ class MatchViewer {
         if (this.isAtLatest) this.pause();
     }
 
-    setTimelineTime(time) {
-        this.selectedTime = time >= this.getTimelineMax() ? null : Math.max(0, time);
+    seekToEvent(event) {
+        this.pause();
+        this.setTimelineTime(event.timestamp, event);
+    }
+
+    setTimelineTime(time, event = null) {
+        this.selectedEvent = event;
+        this.selectedTime = event === null && time >= this.getTimelineMax() ? null : Math.max(0, time);
         this._render();
         this._updateStats();
     }
