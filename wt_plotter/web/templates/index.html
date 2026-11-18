@@ -1,16 +1,27 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>{{ t('index.recorded_matches') }}</h2>
-{% if matches %}
+<div class="match-list-header">
+    <h2>{{ t('index.recorded_matches') }}</h2>
+    <form class="match-date-filter" action="{{ url_for('index') }}" method="get">
+        <label for="match-date">{{ t('index.date_label') }}</label>
+        <input type="date" id="match-date" name="date" value="{{ selected_date or '' }}">
+        <button class="btn btn-primary" type="submit">{{ t('index.filter_date') }}</button>
+        {% if selected_date %}<a class="btn btn-secondary" href="{{ url_for('index') }}">{{ t('index.all_dates') }}</a>{% endif %}
+    </form>
+</div>
+{% for day, matches in matches_by_date.items() %}
+<section class="match-day">
+<h3><time datetime="{{ day }}">{{ day }}</time></h3>
 <div class="match-list">
     {% for match in matches %}
     <div class="match-row">
         <a href="{{ url_for('match_view', match_id=match.id) }}" class="match-item{% if not match.ended_at %} active{% endif %}">
             <div class="match-info">
+                <span class="match-number">{{ t('index.match_number', id=match.id) }}</span>
                 <span class="match-time">{{ match.started_at | dt }} ({{ '%d:%02d' | format(match.duration_seconds // 60, match.duration_seconds % 60) }})</span>
-                <span class="match-map">{{ icons[match.mode] }} {{ match.map_name }}</span>
+                <span class="match-map">{{ match.map_title }}</span>
                 {% if match.air_map %}
-                <span class="match-stats">{{ t('match.air_map', name=(icons[match.air_map.battle_type] ~ ' ' ~ match.air_map.map_name) | trim) }}</span>
+                <span class="match-stats">{{ match.air_map_label }}</span>
                 {% endif %}
                 {% if match.initial_capture_count is not none %}
                 <span class="match-stats">{{ t('match.capture_zones', count=match.initial_capture_count) }}</span>
@@ -39,10 +50,15 @@
     </div>
     {% endfor %}
 </div>
+</section>
 {% else %}
 <div class="empty">
+    {% if selected_date %}
+    <p>{{ t('index.no_matches_on_date') }}</p>
+    {% else %}
     <h2>{{ t('index.empty_title') }}</h2>
     <p>{{ t('index.empty_hint') }}</p>
+    {% endif %}
 </div>
-{% endif %}
+{% endfor %}
 {% endblock %}

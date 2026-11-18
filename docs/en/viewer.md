@@ -61,8 +61,10 @@ Matches recorded before 0.4.0 have no feed.
 
 If no match is in progress, the Live page waits and refreshes when one starts. During a battle it updates every 0.5 seconds. There is no playback bar and the newest moment is always shown; trail duration, filters and the other settings work the same way.
 
+Turn on **Show all teammate death locations** to keep detected squad and allied death markers on the selected map after their trails fade. The viewer infers these markers from ended tracks. The squad and ally filters still apply.
+
 When the match ends the page stays on it and the "Live" badge in the header changes to "Ended". When the next match starts the page moves to it. If the capture program has stopped, "Capture stopped" appears above the map.
 
 ## Match list
 
-Each row is one match: start time, duration, map, number of capture zones at the start, and number of recorded positions. The bin button on the right deletes the match with its positions and feed. A match in progress cannot be deleted.
+Matches are grouped by their local start date, newest first. Use the date field to show one day, or **All dates** to clear the filter. Each row shows a stable match number, start time, duration, map, initial capture zone count and position count. Use the bin button to delete a finished match and its positions and feed.

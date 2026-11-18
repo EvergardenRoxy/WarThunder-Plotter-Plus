@@ -11,6 +11,8 @@ function makeViewer(context, properties = {}) {
         timelinePosition: 1,
         lastTimestamp: 0,
         maxTimestamp: 0,
+        lastEventTimestamp: 0,
+        events: [],
         positionCount: 0,
         positions: [],
         pois: [],
@@ -44,6 +46,7 @@ test('discards out-of-range display coordinates while advancing the cursor', asy
     const viewer = makeViewer(context);
     const position = { tick_id: 1, x: 0.5, y: 0.5, type: 'ground_model', icon: 'MediumTank', color: '#174DFF' };
     context.fetch = async () => ({
+        ok: true,
         json: async () => ({
             ticks: [{ id: 1, timestamp: 1000 }, { id: 2, timestamp: 1500 }],
             positions: [position, { ...position, x: 1.4 }, { ...position, tick_id: 2, x_ground: -0.2, y_ground: 0.5 }],
@@ -241,6 +244,7 @@ test('drops unit icons that are not displayed', async () => {
     const viewer = makeViewer(context);
     const base = { tick_id: 1, x: 0.5, y: 0.5, type: 'ground_model', color: '#174DFF', is_poi: 0 };
     context.fetch = async () => ({
+        ok: true,
         json: async () => ({
             ticks: [{ id: 1, timestamp: 1000 }],
             positions: ['Artillery', 'Pillbox', 'Airdefence', 'Mystery', 'MediumTank', 'Player']
@@ -282,14 +286,132 @@ test('loading events advances the cursor', async () => {
     const urls = [];
     context.fetch = async url => {
         urls.push(url);
-        return { json: async () => [{ timestamp: 1500, msg: 'm' }] };
+        const events = urls.length === 1 ? [{ timestamp: 1500, msg: 'm' }] : [];
+        return { ok: true, json: async () => events };
     };
     const viewer = makeViewer(context, { events: [], lastEventTimestamp: 0 });
     await viewer._loadEvents();
     assert.equal(viewer.lastEventTimestamp, 1501);
     await viewer._loadEvents();
     assert.match(urls[1], /since=1501/);
-    assert.equal(viewer.events.length, 2);
+    assert.equal(viewer.events.length, 1);
+});
+
+test('includes a later battle feed entry at the end of live and replay timelines', () => {
+    const viewer = makeViewer(load('tracks.js', 'viewer.js'), {
+        isLive: true,
+        maxTimestamp: 1000,
+        events: [{ timestamp: 1250, msg: 'Final event' }],
+    });
+    assert.equal(viewer.getTimelineMax(), 1250);
+    assert.equal(viewer._visibleEvents(viewer._cutoff()).length, 1);
+    viewer.isLive = false;
+    assert.equal(viewer._visibleEvents(viewer._cutoff()).length, 1);
+    viewer.timelinePosition = 0.8;
+    assert.equal(viewer._visibleEvents(viewer._cutoff()).length, 0);
+});
+
+test('an events request failure leaves live polling scheduled', async () => {
+    const context = load('tracks.js', 'viewer.js');
+    context.console = { error() {} };
+    const scheduled = [];
+    context.setTimeout = callback => scheduled.push(callback);
+    context.fetch = async () => { throw new TypeError('Disconnected'); };
+
+    let statusChecks = 0;
+    const viewer = makeViewer(context, {
+        isLive: true,
+        polling: true,
+        mapImage: {},
+        async _loadPositions() {},
+        async _checkMatchStatus() { statusChecks++; },
+    });
+    await viewer._poll();
+    assert.equal(statusChecks, 1);
+    assert.equal(scheduled.length, 1);
+
+    context.fetch = async () => ({ ok: true, json: async () => [{ timestamp: 1250, msg: 'Recovered' }] });
+    await scheduled.shift()();
+    assert.equal(statusChecks, 2);
+    assert.equal(viewer.events[0].msg, 'Recovered');
+    assert.equal(scheduled.length, 1);
+});
+
+test('retries the final updates before marking a live match ended', async () => {
+    const context = load('tracks.js', 'viewer.js');
+    context.fetch = async url => ({
+        ok: true,
+        json: async () => {
+            if (url.endsWith('/api/active')) return null;
+            if (url.endsWith('/api/status')) return { capturing: true };
+            return { ended_at: '2026-11-18T00:00:00', battle_type: 'ground', default_map: 'ground' };
+        },
+    });
+    let eventsLoaded = false;
+    let finished = false;
+    const viewer = makeViewer(context, {
+        isLive: true,
+        async _loadPositions() { return true; },
+        async _loadEvents() { return eventsLoaded; },
+        _showMatchEnded() { finished = true; },
+    });
+    await viewer._checkMatchStatus();
+    assert.equal(viewer.isLive, true);
+    assert.equal(finished, false);
+    eventsLoaded = true;
+    await viewer._checkMatchStatus();
+    assert.equal(viewer.isLive, false);
+    assert.equal(finished, true);
+});
+
+test('live map metadata follows the default until the viewer selects a map', () => {
+    const images = [];
+    const updates = [];
+    const viewer = makeViewer(load('tracks.js', 'viewer.js'), {
+        _loadMap() { images.push(this.mapKind); },
+        onMapUpdate(view, match) { updates.push([view.mapKind, match.air_map]); },
+    });
+    const match = { battle_type: 'ground', default_map: 'air', air_map: { map_id: 'air_map' } };
+    viewer._applyMapMetadata(match);
+    assert.equal(viewer.mapKind, 'air');
+    viewer.setMapKind('ground');
+    viewer._applyMapMetadata(match);
+    assert.equal(viewer.mapKind, 'ground');
+    assert.deepEqual(images, ['air', 'ground']);
+    assert.deepEqual(updates, [['air', match.air_map], ['ground', match.air_map]]);
+});
+
+test('keeps old squad and allied death markers in live view without extending trails', () => {
+    const context = load('tracks.js', 'settings.js', 'viewer.js');
+    const points = Array.from({ length: 20 }, (_, i) => ({ t: i * 500 }));
+    const deaths = [];
+    const trails = [];
+    const viewer = makeViewer(context, {
+        isLive: true,
+        maxTimestamp: 100000,
+        trail: 30,
+        filters: { squad: true, ally: true, player: true, enemy: true },
+        tracks: ['squad', 'ally', 'player', 'enemy'].map(category => ({ category, points })),
+        visiblePois: [],
+        mapImage: {},
+        ctx: {
+            setTransform() {}, fillRect() {}, save() {}, translate() {}, scale() {}, drawImage() {}, restore() {},
+        },
+        _render: context.window.MatchViewer.prototype._render,
+        _drawFades(fades) { trails.push(fades.size); },
+        _drawDeath(category) { deaths.push(category); },
+    });
+    viewer._render();
+    assert.deepEqual(deaths, []);
+    viewer.setShowAllFriendlyDeaths(true);
+    assert.deepEqual(deaths, ['squad', 'ally']);
+    assert.deepEqual(trails, [0, 0]);
+    assert.equal(JSON.parse(context.localStorage.getItem('wtp.viewer')).showAllFriendlyDeaths, true);
+    deaths.length = 0;
+    viewer.setFilter('ally', false);
+    assert.deepEqual(deaths, ['squad']);
+    viewer.setShowAllFriendlyDeaths(false);
+    assert.deepEqual(deaths, ['squad']);
 });
 
 test('reset view centers the square map in a wide canvas', () => {

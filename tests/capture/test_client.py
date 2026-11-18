@@ -75,3 +75,22 @@ def test_fetch_damage(response):
     resp.json.return_value = HUDMSG
     assert TelemetryClient().fetch_damage(4) == HUDMSG["damage"]
     assert get.call_args.args[0] == "http://127.0.0.1:8111/hudmsg?lastEvt=0&lastDmg=4"
+
+
+@pytest.mark.parametrize("payload", [{"events": []}, {"damage": None}, []])
+def test_fetch_damage_skips_invalid_payload(response, payload):
+    resp, _ = response
+    resp.json.return_value = payload
+    assert TelemetryClient().fetch_damage(0) is None
+
+
+def test_fetch_damage_skips_invalid_json(response):
+    resp, _ = response
+    resp.json.side_effect = requests.exceptions.JSONDecodeError("Invalid JSON", "", 0)
+    assert TelemetryClient().fetch_damage(0) is None
+
+
+def test_fetch_damage_keeps_valid_entries_in_a_partial_response(response):
+    resp, _ = response
+    resp.json.return_value = {"damage": [{}, {"id": "6", "msg": "invalid"}, *HUDMSG["damage"]]}
+    assert TelemetryClient().fetch_damage(0) == HUDMSG["damage"]

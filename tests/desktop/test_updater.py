@@ -1,10 +1,11 @@
+import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
+import pytest
 import requests
 
 from wt_plotter.desktop import updater
@@ -43,21 +44,65 @@ def test_offline_is_no_update(monkeypatch):
     get.assert_called_once()
 
 
-def test_update_script_replaces_exe_on_non_ascii_path(tmp_path):
+@pytest.mark.parametrize("missing_replacement", [False, True])
+def test_installs_updates_on_non_ascii_path_and_preserves_current_on_failure(tmp_path, missing_replacement):
     system32 = Path(os.environ["SystemRoot"]) / "System32"
     current = tmp_path / "中文 한글" / "app.exe"
-    new = tmp_path / "下载" / "new.exe"
-    for path in (current, new):
-        path.parent.mkdir()
-        shutil.copyfile(system32 / "whoami.exe", path)
-    current.write_bytes(current.read_bytes() + b"OLD")
+    new = current.parent / ".wtp-update-test" / "update.exe"
+    new.parent.mkdir(parents=True)
+    image = (system32 / "whoami.exe").read_bytes()
+    current.write_bytes(image + b"OLD")
+    if not missing_replacement:
+        new.write_bytes(image)
 
-    # 进程号不存在，脚本不等待，直接替换。
-    script = updater._write_update_script(current, new, 4194000)
-    subprocess.run(
-        ["cmd", "/d", "/c", str(script)], env={**os.environ, "PATH": str(system32)},
-        creationflags=subprocess.CREATE_NO_WINDOW, timeout=30, check=True,
-    )
-    assert not current.read_bytes().endswith(b"OLD")
-    assert current.with_name("app.exe.old").read_bytes().endswith(b"OLD")
-    assert not new.exists()
+    process = updater._launch_update(current, new, 4194000, 4194004)
+    result = process.wait(timeout=30)
+    assert not new.parent.exists()
+    if missing_replacement:
+        assert result != 0
+        assert current.read_bytes() == image + b"OLD"
+    else:
+        assert result == 0
+        assert current.read_bytes() == image
+        assert current.with_name("app.exe.old").read_bytes() == image + b"OLD"
+
+
+def test_restart_preserves_windows_arguments_and_working_directory(tmp_path, monkeypatch):
+    plan = {}
+
+    def launch(command, *, env, creationflags):
+        plan.update(json.loads(Path(env["WT_PLOTTER_UPDATE_PLAN"]).read_text(encoding="utf-8")))
+
+    args = ["serve", "--host", "0.0.0.0", "--port", "5250", 'a "quoted" value', "中文 한글"]
+    monkeypatch.setattr(sys, "argv", ["app.exe", *args])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(subprocess, "Popen", launch)
+    updater._launch_update(tmp_path / "app.exe", tmp_path / "update.exe", 123, 456)
+    assert plan["arguments"] == subprocess.list2cmdline(args)
+    assert plan["cwd"] == str(tmp_path)
+    assert (plan["pid"], plan["parent_pid"]) == (123, 456)
+
+
+def test_each_start_stages_the_update_separately(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "app.exe"))
+    monkeypatch.delenv("WT_PLOTTER_SKIP_UPDATE", raising=False)
+    release = Mock(status_code=200)
+    release.json.return_value = {
+        "tag_name": "v999.0.0",
+        "assets": [{"name": "portable.exe", "browser_download_url": "fixture"}],
+    }
+    response = MagicMock()
+    download = response.__enter__.return_value
+    download.iter_content.return_value = [b"new contents"]
+    monkeypatch.setattr(requests, "get", Mock(side_effect=[release, response, release, response]))
+    launch = Mock()
+    monkeypatch.setattr(updater, "_launch_update", launch)
+
+    for _ in range(2):
+        with pytest.raises(SystemExit) as error:
+            updater.check_and_update_on_start()
+        assert error.value.code == 0
+    staged = [call.args[1] for call in launch.call_args_list]
+    assert staged[0].parent != staged[1].parent
+    assert all(path.parent.parent == tmp_path and path.read_bytes() == b"new contents" for path in staged)

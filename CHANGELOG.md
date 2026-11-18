@@ -2,6 +2,13 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.4.4
+
+- Match history groups records by local start date and supports filtering by day. Each match shows its stable record number.
+- The Live page can keep inferred squad and allied death locations visible after their trails fade. A failed battle feed request no longer freezes the live view, and the timeline includes late feed entries.
+- The recorder retries missing or incomplete map images, keeps tracking after malformed battle feed responses, and avoids treating partially loaded capture zones as a map switch. The Live page shows the air map switch as soon as the air map is recorded.
+- Portable updates preserve the original startup arguments, stage each download separately, and restore and start the previous EXE if replacement or launch fails.
+
 ## 0.4.3
 
 - Fixed black or half-black maps. At the start of a match the game sometimes returns a map image that is not fully drawn yet; that image was saved and also made the map show as unknown or "Unknownmap". The recorder now waits for the full image before recording the map, and the live page picks it up as soon as it arrives. Matches already recorded with a black map cannot be repaired.

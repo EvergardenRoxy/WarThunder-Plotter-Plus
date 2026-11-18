@@ -18,14 +18,13 @@ class _MatchState:
     started_at: float = 0.0
     map_hash: str = ""
     map_info: MapInfo = UNKNOWN_MAP
-    # 开局拿到的是没画完的底图，之后每轮重取直到画完。
-    map_pending: bool = False
+    map_retry_at: float | None = None
     air_map_hash: str = ""
     invalid_since: float | None = None
     nuke_detected: bool = False
     saved_pois: set[tuple[str, float, float]] = field(default_factory=set)
     initial_capture_set: bool = False
-    capture_signature: tuple[tuple[float, float], ...] | None = None
+    capture_signature: frozenset[tuple[float, float]] = frozenset()
     previous_objects: list[dict] = field(default_factory=list)
     previous_air_view: bool = False
     transform: tuple[float, float, float, float] | None = None
@@ -54,8 +53,8 @@ class MatchTracker:
 
         if self.match_id is None:
             self._start_match(now, self.fetch_map_image())
-        elif self._state.map_pending:
-            self._retry_map_image()
+        elif self._state.map_retry_at is not None and now >= self._state.map_retry_at:
+            self._retry_map_image(now)
         self._state.invalid_since = None
         if objects:
             self._capture_positions(now, indicators or {}, objects)
@@ -91,17 +90,19 @@ class MatchTracker:
         if loaded:
             self._save_map_image(image, map_hash, map_info)
         self._state = _MatchState(
-            db.start_match(self.conn, map_hash), now, map_hash, map_info, map_pending=image is not None and not loaded,
+            db.start_match(self.conn, map_hash), now, map_hash, map_info,
+            map_retry_at=None if loaded else now + CAPTURE_SETTINGS.map_retry_interval,
         )
 
-    def _retry_map_image(self) -> None:
+    def _retry_map_image(self, now: float) -> None:
+        state = self._state
         image = self.fetch_map_image()
         if image is None or not is_map_loaded(image):
+            state.map_retry_at = now + CAPTURE_SETTINGS.map_retry_interval
             return
-        state = self._state
         state.map_hash = compute_dhash(image)
         state.map_info = lookup_map(state.map_hash)
-        state.map_pending = False
+        state.map_retry_at = None
         self._save_map_image(image, state.map_hash, state.map_info)
         db.set_map_hash(self.conn, state.match_id, state.map_hash)
 
@@ -114,7 +115,7 @@ class MatchTracker:
             if current.map_id == "no_map":
                 self.end_match()
                 return
-            if map_hash != state.map_hash and is_map_loaded(image):
+            if state.map_hash and map_hash != state.map_hash and is_map_loaded(image):
                 if (
                     state.map_info.battle_type in (BattleType.GROUND, BattleType.NAVAL)
                     and current.battle_type == BattleType.AIR
@@ -157,8 +158,10 @@ class MatchTracker:
         poi_changed = False
         if capture_zones:
             precision = CAPTURE_SETTINGS.signature_rounding
-            signature = tuple(sorted((round(x, precision), round(y, precision)) for x, y in capture_zones))
-            poi_changed = state.capture_signature is not None and signature != state.capture_signature
+            signature = frozenset((round(x, precision), round(y, precision)) for x, y in capture_zones)
+            # 同一组点位分批到达或暂时缺失时，不切换视角。
+            previous = state.capture_signature
+            poi_changed = not (previous <= signature or signature <= previous)
             state.capture_signature = signature
         if capture_zones and not state.initial_capture_set:
             count = len(capture_zones)

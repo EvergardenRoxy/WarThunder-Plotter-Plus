@@ -1,5 +1,5 @@
 from dataclasses import asdict
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from threading import Thread
 
@@ -74,30 +74,41 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
             "mode": BattleType.AIR.value if is_air_battle(match) else info["battle_type"],
         }
 
+    def map_label(info, mode):
+        return f"{BATTLE_ICONS[mode]} {info['map_name']}".strip()
+
     def match_page_data(match):
         payload = match_summary(match)
-        payload["air_map"] = map_metadata(match.air_map_hash) if match.air_map_hash else None
-        return payload
+        air_map = map_metadata(match.air_map_hash) if match.air_map_hash else None
+        return {
+            **payload,
+            "air_map": air_map,
+            "default_map": "air" if air_map and payload["mode"] == BattleType.AIR.value else "ground",
+            "map_title": map_label(payload, payload["mode"]),
+            "map_label": t("match.map", name=map_label(payload, payload["battle_type"])),
+            "air_map_label": t("match.air_map", name=map_label(air_map, air_map["battle_type"])) if air_map else "",
+        }
 
     def render_match(match, is_live):
-        payload = match_page_data(match)
-        # 空战局默认显示空战图。
-        default_map = "air" if payload["mode"] == BattleType.AIR.value and match.air_map_hash else "ground"
-        return render_template("match.html", match=payload, is_live=is_live, default_map=default_map)
+        return render_template("match.html", match=match_page_data(match), is_live=is_live)
 
     @app.get("/")
     def index():
         conn = connection()
-        matches = []
+        selected_date = request.args.get("date", type=date.fromisoformat)
+        matches_by_date = {}
         for match in db.get_all_matches(conn):
             start = datetime.fromisoformat(match.started_at)
+            day = start.date()
+            if selected_date and day != selected_date:
+                continue
             end = datetime.fromisoformat(match.ended_at) if match.ended_at else datetime.now()
-            matches.append({
+            matches_by_date.setdefault(day, []).append({
                 **match_page_data(match),
                 "duration_seconds": max(0, int((end - start).total_seconds())),
                 "position_count": db.count_positions(conn, match.id),
             })
-        return render_template("index.html", matches=matches)
+        return render_template("index.html", matches_by_date=matches_by_date, selected_date=selected_date)
 
     @app.get("/match/<int:match_id>")
     def match_view(match_id):
@@ -128,7 +139,7 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
             return jsonify(error="match_not_found"), 404
         payload = asdict(match)
         del payload["air_map_hash"]
-        return jsonify(payload | map_metadata(match.map_hash))
+        return jsonify(payload | match_page_data(match))
 
     @app.delete("/api/match/<int:match_id>")
     def api_delete_match(match_id):

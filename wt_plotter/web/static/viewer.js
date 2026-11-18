@@ -45,24 +45,29 @@ const VIEW_STYLE = Object.freeze({
     blipRange: [0.25, 1.5],
     lineScaleRange: [0.5, 2],
     speedRange: [5, 40],
-    defaults: { trail: 30, blipSize: 0.5, lineScale: 1, speed: 10 },
+    defaults: { trail: 30, blipSize: 0.5, lineScale: 1, speed: 10, showAllFriendlyDeaths: false },
     settingsKey: 'wtp.viewer',
 });
 
 const clamp = (value, [min, max]) => Math.max(min, Math.min(max, value));
 
 class MatchViewer {
-    constructor(canvasId, matchId, { isLive = false, battleType = 'ground', mapKind = 'ground', pollInterval = 500, onRender, onPlayStateChange, onEvents } = {}) {
+    constructor(canvasId, matchId, {
+        isLive = false, battleType = 'ground', mapKind = 'ground', pollInterval = 500,
+        onRender, onPlayStateChange, onEvents, onMapUpdate,
+    } = {}) {
         this.canvas = document.getElementById(canvasId);
         this.ctx = this.canvas.getContext('2d');
         this.matchId = matchId;
         this.isLive = isLive;
         this.battleType = battleType;
         this.mapKind = mapKind;
+        this.mapKindSelected = false;
         this.pollInterval = pollInterval;
         this.onRender = onRender;
         this.onPlayStateChange = onPlayStateChange;
         this.onEvents = onEvents;
+        this.onMapUpdate = onMapUpdate;
         this.events = [];
         this.lastEventTimestamp = 0;
         this.feedKey = '';
@@ -92,6 +97,7 @@ class MatchViewer {
         this.lineScale = settings.lineScale;
         this.trail = settings.trail;
         this.speed = settings.speed;
+        this.showAllFriendlyDeaths = settings.showAllFriendlyDeaths;
         this.timelinePosition = 1.0;
         this.maxTimestamp = 0;
         this.isPlaying = false;
@@ -275,7 +281,9 @@ class MatchViewer {
         return this.battleType === 'air' || this.mapKind === 'air';
     }
 
-    setMapKind(kind) {
+    setMapKind(kind, manual = true) {
+        if (manual) this.mapKindSelected = true;
+        if (kind === this.mapKind) return;
         this.mapKind = kind;
         this.mapImage = null;
         this._loadMap();
@@ -284,18 +292,33 @@ class MatchViewer {
         this._updateStats();
     }
 
-    async _loadMap() {
-        const img = new Image();
+    _applyMapMetadata(match) {
+        const battleTypeChanged = this.battleType !== match.battle_type;
+        this.battleType = match.battle_type;
+        if (!this.mapKindSelected && this.mapKind !== match.default_map) {
+            this.setMapKind(match.default_map, false);
+        } else if (battleTypeChanged) {
+            this._buildTracks();
+            this._render();
+        }
+        this.onMapUpdate?.(this, match);
+    }
+
+    _loadMap() {
         const kind = this.mapKind;
+        if (this.mapRequest?.kind === kind) return;
+        const img = new Image();
+        const request = { kind };
+        this.mapRequest = request;
         img.onload = () => {
             // 切换过底图时丢弃旧请求的结果。
-            if (kind !== this.mapKind) return;
+            if (this.mapRequest !== request) return;
+            this.mapRequest = null;
             this.mapImage = img;
             this._render();
         };
         img.onerror = () => {
-            console.warn('Failed to load map image');
-            this._render();
+            if (this.mapRequest === request) this.mapRequest = null;
         };
         img.src = `/api/match/${this.matchId}/map.png?kind=${kind}`;
     }
@@ -303,6 +326,7 @@ class MatchViewer {
     async _loadPositions() {
         try {
             const resp = await fetch(`/api/match/${this.matchId}/positions?since=${this.lastTimestamp}`);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const { ticks = [], positions = [] } = await resp.json();
 
             if (positions.length > 0) {
@@ -333,17 +357,28 @@ class MatchViewer {
             }
         } catch (e) {
             console.error('Failed to load positions:', e);
+            return false;
         }
         this._updateStats();
+        return true;
     }
 
     async _loadEvents() {
-        const resp = await fetch(`/api/match/${this.matchId}/events?since=${this.lastEventTimestamp}`);
-        const events = await resp.json();
-        if (events.length === 0) return;
-        for (const event of events) this.events.push(event);
-        this.lastEventTimestamp = events.at(-1).timestamp + 1;
-        this._render();
+        let events;
+        try {
+            const resp = await fetch(`/api/match/${this.matchId}/events?since=${this.lastEventTimestamp}`);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            events = await resp.json();
+        } catch (e) {
+            console.error('Failed to load events:', e);
+            return false;
+        }
+        if (events.length > 0) {
+            for (const event of events) this.events.push(event);
+            this.lastEventTimestamp = events.at(-1).timestamp + 1;
+            this._render();
+        }
+        return true;
     }
 
     // 时间轴当前时刻之前的播报，最新的在前。
@@ -377,17 +412,21 @@ class MatchViewer {
     async _checkMatchStatus() {
         try {
             const resp = await fetch(`/api/match/${this.matchId}`);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const match = await resp.json();
+            this._applyMapMetadata(match);
             if (match.ended_at) {
                 const activeResp = await fetch('/api/active');
                 const active = await activeResp.json();
                 if (active && active.id && active.id !== this.matchId) {
                     window.location.href = '/live';
                 } else if (this.isLive) {
-                    // 结束前写入的最后一批位置可能还没取到，补取一次。
-                    await Promise.all([this._loadPositions(), this._loadEvents()]);
-                    this.isLive = false;
-                    this._showMatchEnded();
+                    // 最后一批位置和播报都取到后再结束刷新。
+                    const loaded = await Promise.all([this._loadPositions(), this._loadEvents()]);
+                    if (loaded.every(Boolean)) {
+                        this.isLive = false;
+                        this._showMatchEnded();
+                    }
                 }
             }
             const statusResp = await fetch('/api/status');
@@ -510,7 +549,8 @@ class MatchViewer {
     }
 
     _cutoff() {
-        return this.isLive ? this.maxTimestamp : this.maxTimestamp * this.timelinePosition;
+        const end = this.getTimelineMax();
+        return this.isLive ? end : end * this.timelinePosition;
     }
 
     _getPoiClusters(cutoff) {
@@ -576,13 +616,18 @@ class MatchViewer {
         for (const { category, points } of this.tracks) {
             if (!this.filters[category]) continue;
             const [start, end] = this._visibleRange(points, cutoff);
-            if (start > end) continue;
-            if (!fades.has(category)) fades.set(category, []);
-            this._addTrack(fades.get(category), points, start, end, cutoff - this.trail * 1000);
+            if (end < 0) continue;
             const point = points[end];
-            if (cutoff - point.t <= VIEW_STYLE.aliveWindow) {
-                current.push({ category, point, previous: points[end - 1] });
-            } else if (this._isDeath(category, points, end, cutoff)) {
+            const inTrail = start <= end;
+            if (inTrail) {
+                if (!fades.has(category)) fades.set(category, []);
+                this._addTrack(fades.get(category), points, start, end, cutoff - this.trail * 1000);
+                if (cutoff - point.t <= VIEW_STYLE.aliveWindow) {
+                    current.push({ category, point, previous: points[end - 1] });
+                }
+            }
+            const keepDeath = this.isLive && this.showAllFriendlyDeaths && (category === 'ally' || category === 'squad');
+            if ((inTrail || keepDeath) && this._isDeath(category, points, end, cutoff)) {
                 deaths.push({ category, point });
             }
         }
@@ -771,12 +816,19 @@ class MatchViewer {
 
     _saveSettings() {
         window.Settings.save(VIEW_STYLE.settingsKey, {
-            trail: this.trail, blipSize: this.blipSize, lineScale: this.lineScale, speed: this.speed, filters: this.filters,
+            trail: this.trail, blipSize: this.blipSize, lineScale: this.lineScale, speed: this.speed,
+            filters: this.filters, showAllFriendlyDeaths: this.showAllFriendlyDeaths,
         });
     }
 
     setFilter(category, enabled) {
         this.filters[category] = enabled;
+        this._saveSettings();
+        this._render();
+    }
+
+    setShowAllFriendlyDeaths(enabled) {
+        this.showAllFriendlyDeaths = enabled;
         this._saveSettings();
         this._render();
     }
@@ -815,7 +867,7 @@ class MatchViewer {
     }
 
     play() {
-        if (this.isLive || this.isPlaying || this.maxTimestamp === 0) return;
+        if (this.isLive || this.isPlaying || this.getTimelineMax() === 0) return;
         if (this.timelinePosition === 1) this.setTimeline(0);
         this.isPlaying = true;
         this.onPlayStateChange?.(true);
@@ -837,7 +889,7 @@ class MatchViewer {
     }
 
     _advancePlayback(dt) {
-        this.setTimeline(this.timelinePosition + dt * this.speed / this.maxTimestamp);
+        this.setTimeline(this.timelinePosition + dt * this.speed / this.getTimelineMax());
         if (this.timelinePosition === 1) this.pause();
     }
 
@@ -848,7 +900,7 @@ class MatchViewer {
     }
 
     getTimelineMax() {
-        return this.maxTimestamp;
+        return Math.max(this.maxTimestamp, this.events.at(-1)?.timestamp ?? 0);
     }
 
     formatTime(seconds) {

@@ -67,6 +67,16 @@ if (mapCanvas) {
     const currentTime = document.getElementById('timeline-current');
     const maxTime = document.getElementById('timeline-max');
     const playButton = document.getElementById('timeline-play');
+    const mapKindControl = document.getElementById('map-kind');
+    const mapKindButtons = mapKindControl.querySelectorAll('[data-map-kind]');
+    const mapTitle = document.getElementById('match-map-title');
+    const mapLabel = document.getElementById('match-map-label');
+    const airMapLabel = document.getElementById('match-air-map-label');
+    const markMapKind = view => {
+        for (const button of mapKindButtons) {
+            button.setAttribute('aria-pressed', String(button.dataset.mapKind === view.mapKind));
+        }
+    };
     const viewer = new MatchViewer(mapCanvas.id, Number(mapCanvas.dataset.matchId), {
         isLive: mapCanvas.dataset.live === 'true',
         battleType: mapCanvas.dataset.battleType,
@@ -98,20 +108,25 @@ if (mapCanvas) {
         },
         onPlayStateChange(isPlaying) {
             playButton.textContent = isPlaying ? t('viewer.pause') : t('viewer.play');
+        },
+        onMapUpdate(view, match) {
+            mapKindControl.hidden = !match.air_map;
+            airMapLabel.hidden = !match.air_map;
+            for (const [element, text] of [
+                [mapTitle, match.map_title], [mapLabel, match.map_label], [airMapLabel, match.air_map_label],
+            ]) {
+                if (element.textContent !== text) element.textContent = text;
+            }
+            markMapKind(view);
         }
     });
 
-    const mapKindButtons = document.querySelectorAll('[data-map-kind]');
-    const markMapKind = () => {
-        for (const button of mapKindButtons) button.classList.toggle('active', button.dataset.mapKind === viewer.mapKind);
-    };
     for (const button of mapKindButtons) {
         button.addEventListener('click', () => {
             viewer.setMapKind(button.dataset.mapKind);
-            markMapKind();
+            markMapKind(viewer);
         });
     }
-    markMapKind();
 
     document.getElementById('zoom-in').addEventListener('click', () => viewer.zoomIn());
     document.getElementById('zoom-out').addEventListener('click', () => viewer.zoomOut());
@@ -120,6 +135,11 @@ if (mapCanvas) {
     for (const checkbox of document.querySelectorAll('[data-filter]')) {
         checkbox.checked = viewer.filters[checkbox.dataset.filter];
         checkbox.addEventListener('change', () => viewer.setFilter(checkbox.dataset.filter, checkbox.checked));
+    }
+    const friendlyDeaths = document.getElementById('show-all-friendly-deaths');
+    if (friendlyDeaths) {
+        friendlyDeaths.checked = viewer.showAllFriendlyDeaths;
+        friendlyDeaths.addEventListener('change', () => viewer.setShowAllFriendlyDeaths(friendlyDeaths.checked));
     }
     const bindSlider = (id, value, setter, format = text => text) => {
         const slider = document.getElementById(id);

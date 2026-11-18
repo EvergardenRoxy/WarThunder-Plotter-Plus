@@ -301,6 +301,10 @@ a {
   overflow: hidden;
 }
 
+.map-kind[hidden] {
+  display: none;
+}
+
 .map-kind button {
   height: 26px;
   padding: 0 0.6rem;
@@ -312,7 +316,7 @@ a {
   cursor: pointer;
 }
 
-.map-kind button.active {
+.map-kind button[aria-pressed="true"] {
   background: var(--accent);
   color: #fff;
 }
@@ -534,9 +538,49 @@ a {
 }
 
 /* 首页比赛列表。 */
-.container > h2 {
-  margin: 0 0 1rem;
+.match-list-header,
+.match-date-filter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+}
+
+.match-list-header {
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.match-list-header h2 {
+  margin: 0;
   font-size: 1.25rem;
+}
+
+.match-date-filter input {
+  min-height: var(--control-height);
+  padding: 0 0.5rem;
+  color-scheme: dark;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.match-day + .match-day {
+  margin-top: 1.5rem;
+}
+
+.match-day h3 {
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.match-number {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .match-list {
@@ -680,5 +724,20 @@ a {
 
   .match-sub {
     display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .header {
+    height: auto;
+    min-height: var(--header-height);
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding-block: 0.5rem;
+  }
+
+  .header nav {
+    width: 100%;
+    flex-wrap: wrap;
   }
 }
