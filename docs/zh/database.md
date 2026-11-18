@@ -21,6 +21,6 @@ erDiagram
 
 ## 读取与清理
 
-`GET /api/match/<id>/positions` 返回 `ticks` 和 `positions`。整数 `since` 按毫秒解释，小数按秒解释，结果包含起点时间戳。回放器关联两份列表，存在换算结果时使用地面坐标。`GET /api/match/<id>/events?since=<毫秒>` 按时间升序返回播报，不含掉线时游戏多发的未翻译原始行（以 `NET_PLAYER_DISCONNECT_FROM_GAME` 结尾）。
+`GET /api/match/<id>/positions` 返回 `ticks` 和 `positions`。整数 `since` 按毫秒解释，小数按秒解释，结果包含起点时间戳。回放器关联两份列表，存在换算结果时使用地面坐标。`GET /api/match/<id>/events?since=<毫秒>` 按时间升序返回播报。离场消息使用界面语言，同一玩家在同一时间戳的重复离场消息合并显示。
 
 数据库采用 WAL，采集线程和网页请求各自打开连接。删除已结束比赛时，在同一事务中删除播报、位置、tick 和比赛行，再请求增量回收。已有数据库沿用原 SQLite 自动回收模式。采集启动时结束上次中断遗留的比赛。

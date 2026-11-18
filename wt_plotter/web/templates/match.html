@@ -2,31 +2,50 @@
 {% set heading = t('match.live_title') if is_live else t('match.title', id=match.id) %}
 {% block title %}{{ heading }} · {% endblock %}
 {% set body_class = 'match-page' %}
-{% block header_center %}
-<div class="match-title">
-    <strong>{{ heading }}</strong>
-    {% if is_live %}<span id="live-badge" class="badge live">{{ t('match.live') }}</span>{% endif %}
-    <span class="match-sub" id="match-map-title">{{ match.map_title }}</span>
-    <span class="match-sub">{{ match.started_at | dt }}</span>
-    <details class="match-details">
-        <summary title="{{ t('viewer.details') }}" aria-label="{{ t('viewer.details') }}">ⓘ</summary>
-        <div class="match-details-body">
-            <div>{{ t('match.started_at', time=match.started_at | dt) }}</div>
-            {% if match.ended_at %}
-            <div>{{ t('match.ended_at', time=match.ended_at | dt) }}</div>
-            {% endif %}
-            <div id="match-map-label">{{ match.map_label }}</div>
-            <div id="match-air-map-label"{% if not match.air_map %} hidden{% endif %}>{{ match.air_map_label }}</div>
-            {% if match.initial_capture_count is not none %}
-            <div>{{ t('match.initial_capture_zones', count=match.initial_capture_count) }}</div>
-            {% endif %}
-            {% if match.initial_capture_x is not none and match.initial_capture_y is not none %}
-            <div>{{ t('match.capture_barycenter', x='%.4f' | format(match.initial_capture_x), y='%.4f' | format(match.initial_capture_y)) }}</div>
-            {% endif %}
+{% block content %}
+{% set filters = [
+    ('player', '#faC81E', t('filter.player')), ('squad', '#67D756', t('filter.squad')),
+    ('ally', '#174DFF', t('filter.ally')), ('enemy', '#fa0C00', t('filter.enemy')),
+    ('capture_zone', '#ffffff', t('filter.capture')), ('respawn', '#888888', t('filter.respawn')),
+    ('other', '#888888', t('filter.other')),
+] %}
+<header class="match-heading">
+    <div>
+        <div class="match-meta">
+            <span>{{ t('index.match_number', id=match.id) }}</span>
+            <span id="match-mode-title">{{ match.mode_label }}</span>
         </div>
-    </details>
-</div>
-{% endblock %}
+        <h2 id="match-map-title">{{ match.map_name }}</h2>
+    </div>
+    <div class="match-heading-actions">
+        <div class="own-vehicle">
+            <span><i class="color-dot" style="background: {{ filters[0][1] }}"></i>{{ t('viewer.own_vehicle') }}</span>
+            <strong id="own-vehicle-name">{{ t('viewer.vehicle_unavailable') }}</strong>
+        </div>
+        {% if is_live %}
+        <span id="live-badge" class="badge live">{{ t('match.live') }}</span>
+        {% else %}
+        <span class="badge ended">{{ t('match.ended') }}</span>
+        {% endif %}
+        <details class="match-details">
+            <summary title="{{ t('viewer.details') }}" aria-label="{{ t('viewer.details') }}">ⓘ</summary>
+            <div class="match-details-body">
+                <div>{{ t('match.started_at', time=match.started_at | dt) }}</div>
+                {% if match.ended_at %}
+                <div>{{ t('match.ended_at', time=match.ended_at | dt) }}</div>
+                {% endif %}
+                <div id="match-map-label">{{ match.map_label }}</div>
+                <div id="match-air-map-label"{% if not match.air_map %} hidden{% endif %}>{{ match.air_map_label }}</div>
+                {% if match.initial_capture_count is not none %}
+                <div>{{ t('match.initial_capture_zones', count=match.initial_capture_count) }}</div>
+                {% endif %}
+                {% if match.initial_capture_x is not none and match.initial_capture_y is not none %}
+                <div>{{ t('match.capture_barycenter', x='%.4f' | format(match.initial_capture_x), y='%.4f' | format(match.initial_capture_y)) }}</div>
+                {% endif %}
+            </div>
+        </details>
+    </div>
+</header>
 {# 图例形状，与 shapes.js 的几何一致。 #}
 {% macro legend_shape(shape) -%}
 <svg class="legend-shape" viewBox="-8 -8 16 16" aria-hidden="true">
@@ -40,7 +59,6 @@
     {% endif %}
 </svg>
 {%- endmacro %}
-{% block content %}
 <div class="viewer">
     <section class="map-column">
         {% if is_live %}
@@ -48,67 +66,61 @@
         {% endif %}
         <div class="canvas-wrapper">
             <div id="unit-tooltip" class="unit-tooltip" hidden></div>
-            <canvas id="mapCanvas" data-match-id="{{ match.id }}" data-live="{{ 'true' if is_live else 'false' }}" data-battle-type="{{ match.battle_type }}" data-has-air-map="{{ 'true' if match.air_map else 'false' }}" data-default-map="{{ match.default_map }}" title="{{ t('viewer.zoom_hint') }}"></canvas>
+            <canvas id="mapCanvas" tabindex="0" data-match-id="{{ match.id }}" data-live="{{ 'true' if is_live else 'false' }}" data-battle-type="{{ match.battle_type }}" data-has-air-map="{{ 'true' if match.air_map else 'false' }}" data-default-map="{{ match.default_map }}" data-placeholder-vehicles='{{ placeholder_vehicles | tojson }}' title="{{ t('viewer.zoom_hint') }}"></canvas>
+            <div class="map-tools">
+                <div class="map-legend">
+                    {% for value, color, label in filters[:4] %}
+                    <span><i class="color-dot" style="background: {{ color }}"></i>{{ label }}</span>
+                    {% endfor %}
+                    <span><b aria-hidden="true">×</b>{{ t('viewer.crew_knocked_out') }}</span>
+                </div>
+                <div class="zoom-controls" role="group" aria-label="{{ t('viewer.zoom') }}">
+                    <button class="btn btn-secondary btn-icon" id="zoom-out" aria-label="{{ t('viewer.zoom_out') }}">−</button>
+                    <button class="btn btn-secondary" id="zoom-reset" aria-label="{{ t('viewer.reset_zoom') }}" title="{{ t('viewer.reset_zoom') }}"><span id="zoom-level">100%</span></button>
+                    <button class="btn btn-secondary btn-icon" id="zoom-in" aria-label="{{ t('viewer.zoom_in') }}">+</button>
+                </div>
+            </div>
         </div>
         <div class="playbar">
-            <button type="button" id="timeline-play" class="btn btn-primary play-button" disabled>{{ t('viewer.play') }}</button>
-            <input type="range" id="timeline-slider" min="0" max="0" step="any" value="0" class="timeline-slider" aria-label="{{ t('viewer.timeline') }}" title="{{ t('viewer.timeline_hint') }}" disabled>
-            <span class="timeline-display"><span id="timeline-current">--:--</span> / <span id="timeline-max">--:--</span></span>
-            {% if is_live %}
-            <button type="button" id="timeline-live" class="btn btn-secondary" disabled>{{ t('viewer.return_live') }}</button>
-            {% endif %}
-            <div class="playback-speed">
-                <label for="speed-slider" class="speed-label">{{ t('viewer.speed') }}</label>
-                <input type="range" id="speed-slider" min="5" max="40" step="1" class="speed-slider">
-                <span id="speed-slider-value" class="control-value speed-value"></span>
+            <div class="timeline-toolbar">
+                <button type="button" id="timeline-play" class="btn btn-primary play-button" disabled>{{ t('viewer.play') }}</button>
+                <span class="timeline-display"><strong id="timeline-current">--:--</strong> / <span id="timeline-max">--:--</span></span>
+                <div class="timeline-status">
+                    <strong id="timeline-state">{{ t('viewer.timeline_live' if is_live else 'viewer.timeline_replay') }}</strong>
+                    <span id="timeline-delay"></span>
+                    {% if is_live %}
+                    <button type="button" id="timeline-live" class="btn btn-secondary" disabled>{{ t('viewer.return_live') }}</button>
+                    {% endif %}
+                </div>
+                <div class="playback-speed">
+                    <label for="speed-slider" class="speed-label">{{ t('viewer.speed') }}</label>
+                    <input type="range" id="speed-slider" min="0" step="1" class="speed-slider">
+                    <span id="speed-slider-value" class="control-value speed-value"></span>
+                </div>
+            </div>
+            <div class="timeline-track">
+                <input type="range" id="timeline-slider" min="0" max="0" step="any" value="0" class="timeline-slider" aria-label="{{ t('viewer.timeline') }}" title="{{ t('viewer.timeline_hint') }}" disabled>
+                <div id="timeline-events" class="timeline-events" aria-hidden="true"></div>
+            </div>
+            <div class="timeline-axis" aria-hidden="true">
+                {% for i in range(5) %}<span data-axis-tick>{{ '0:00' if i == 0 else '' }}</span>{% endfor %}
             </div>
         </div>
     </section>
     <aside class="sidebar">
-        <div class="panel">
+        <section class="display-panel" aria-labelledby="display-title">
             <div class="panel-head">
-                <h3>{{ t('viewer.statistics') }}</h3>
+                <h3 id="display-title">{{ t('viewer.map_display') }}</h3>
                 <div class="map-kind" id="map-kind" role="group" aria-label="{{ t('viewer.map_kind') }}"{% if not match.air_map %} hidden{% endif %}>
                     <button type="button" data-map-kind="ground" aria-pressed="{{ 'true' if match.default_map == 'ground' else 'false' }}">{{ t('viewer.map_ground') }}</button>
                     <button type="button" data-map-kind="air" aria-pressed="{{ 'true' if match.default_map == 'air' else 'false' }}">{{ t('viewer.map_air') }}</button>
                 </div>
             </div>
-            <div id="stats">{{ t('viewer.loading') }}</div>
-        </div>
-        <div class="panel">
-            <div class="control-row">
-                <label for="trail-length">{{ t('viewer.trail') }}</label>
-                <select id="trail-length" class="trail-length"></select>
+            <div class="filter-presets" role="group" aria-label="{{ t('filter.title') }}">
+                <button type="button" class="btn btn-secondary" data-filter-preset="all">{{ t('viewer.filter_all') }}</button>
+                <button type="button" class="btn btn-secondary" data-filter-preset="squad">{{ t('viewer.filter_squad') }}</button>
             </div>
-            <div class="control-row">
-                <label for="blip-size">{{ t('filter.blip_size') }}</label>
-                <input type="range" id="blip-size" min="0.25" max="1.5" step="0.05">
-                <span id="blip-size-value" class="control-value"></span>
-            </div>
-            <div class="control-row">
-                <label for="line-scale">{{ t('filter.line_scale') }}</label>
-                <input type="range" id="line-scale" min="0.5" max="2" step="0.1">
-                <span id="line-scale-value" class="control-value"></span>
-            </div>
-            <div class="control-row">
-                <span>{{ t('viewer.zoom') }}</span>
-                <div class="zoom-controls">
-                    <button class="btn btn-secondary btn-icon" id="zoom-out" aria-label="{{ t('viewer.zoom_out') }}">−</button>
-                    <span id="zoom-level">100%</span>
-                    <button class="btn btn-secondary btn-icon" id="zoom-in" aria-label="{{ t('viewer.zoom_in') }}">+</button>
-                    <button class="btn btn-secondary" id="zoom-reset">{{ t('viewer.reset') }}</button>
-                </div>
-            </div>
-        </div>
-        <div class="panel">
-            <h3>{{ t('filter.title') }}</h3>
             <div class="filter-list">
-                {% set filters = [
-                    ('player', '#faC81E', t('filter.player')), ('squad', '#67D756', t('filter.squad')),
-                    ('ally', '#174DFF', t('filter.ally')), ('enemy', '#fa0C00', t('filter.enemy')),
-                    ('capture_zone', '#ffffff', t('filter.capture')), ('respawn', '#888888', t('filter.respawn')),
-                    ('other', '#888888', t('filter.other')),
-                ] %}
                 {% for value, color, label in filters %}
                 <label class="filter-item" for="filter-{{ value }}">
                     <input type="checkbox" id="filter-{{ value }}" data-filter="{{ value }}">
@@ -117,24 +129,50 @@
                 </label>
                 {% endfor %}
             </div>
+            <div class="control-row">
+                <label for="trail-length">{{ t('viewer.trail') }}</label>
+                <select id="trail-length" class="trail-length"></select>
+            </div>
             <label class="filter-item" for="show-all-friendly-deaths">
                 <input type="checkbox" id="show-all-friendly-deaths">
                 <span>{{ t('viewer.show_all_friendly_deaths') }}</span>
             </label>
-            <div class="unit-legend" id="unit-legend">
-                {% for key, shape in [
-                    ('unit.LightTank', 'diamond'), ('unit.MediumTank', 'circle'), ('unit.HeavyTank', 'square'),
-                    ('unit.TankDestroyer', 'triangle'), ('unit.SPAA', 'circle-cross'), ('unit.Wheeled', 'pentagon'),
-                    ('unit.Fighter', 'arrow'), ('unit.Assault', 'arrow'), ('unit.Bomber', 'arrow'),
-                ] %}
-                <span class="legend-item">{{ legend_shape(shape) }}{{ t(key) }}</span>
-                {% endfor %}
+            <details class="display-details">
+                <summary>{{ t('viewer.display_details') }}</summary>
+                <div class="control-row">
+                    <label for="blip-size">{{ t('filter.blip_size') }}</label>
+                    <input type="range" id="blip-size" min="0.25" max="1.5" step="0.05">
+                    <span id="blip-size-value" class="control-value"></span>
+                </div>
+                <div class="control-row">
+                    <label for="line-scale">{{ t('filter.line_scale') }}</label>
+                    <input type="range" id="line-scale" min="0.5" max="2" step="0.1">
+                    <span id="line-scale-value" class="control-value"></span>
+                </div>
+                <div class="unit-legend" id="unit-legend">
+                    {% for key, shape in [
+                        ('unit.LightTank', 'diamond'), ('unit.MediumTank', 'circle'), ('unit.HeavyTank', 'square'),
+                        ('unit.TankDestroyer', 'triangle'), ('unit.SPAA', 'circle-cross'), ('unit.Wheeled', 'pentagon'),
+                        ('unit.Fighter', 'arrow'), ('unit.Assault', 'arrow'), ('unit.Bomber', 'arrow'),
+                    ] %}
+                    <span class="legend-item">{{ legend_shape(shape) }}{{ t(key) }}</span>
+                    {% endfor %}
+                </div>
+                <div id="stats">{{ t('viewer.loading') }}</div>
+            </details>
+        </section>
+        <section class="feed-panel" aria-labelledby="feed-title">
+            <div class="panel-head">
+                <h3 id="feed-title">{{ t('viewer.feed') }}</h3>
+                <div class="feed-controls">
+                    <span id="feed-count"></span>
+                    <label><input type="checkbox" id="follow-feed"> {{ t('viewer.follow_feed') }}</label>
+                </div>
             </div>
-        </div>
-        <div class="panel feed-panel">
-            <h3>{{ t('viewer.feed') }}</h3>
-            <ol id="event-feed" class="event-feed"></ol>
-        </div>
+            <ol id="event-feed" class="event-feed">
+                <li id="feed-empty" class="feed-empty">{{ t('viewer.feed_empty') }}</li>
+            </ol>
+        </section>
     </aside>
 </div>
 {% endblock %}

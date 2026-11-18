@@ -53,4 +53,4 @@ Send the hash and the map it belongs to to the developer, or add it to the map t
 
 The feed comes from the `/hudmsg` endpoint and matches the messages scrolling in the top right of the game screen. The first batch received in each match is only used to find the starting point (it may hold messages from the previous match); everything after it is saved. If the endpoint is unavailable there is simply no feed, and trails are still captured.
 
-When a player disconnects, the game also sends an untranslated raw message (`…NET_PLAYER_DISCONNECT_FROM_GAME`). It is kept in the database and hidden in the viewer.
+The database keeps raw player departure messages (`…NET_PLAYER_DISCONNECT_FROM_GAME`). The viewer displays them in the app language.

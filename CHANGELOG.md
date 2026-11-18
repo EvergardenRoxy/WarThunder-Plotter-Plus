@@ -2,6 +2,14 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.4.6
+
+- The dark match viewer keeps map controls above the scrollable battle feed. The timeline marks battle events, and tracks fade with age even when the full trail is shown.
+- The **My vehicle** label beside the map title shows the recorded model at the selected time in replay or rewind and the current model when following live. Hover over a teammate's crew knockout marker to see the unit type.
+- The battle feed keeps every recorded message visible when you seek to an older entry. **Auto-scroll** follows playback, and turning it off keeps your place as new messages arrive. Player departure messages also appear in older recordings.
+- Press Space to play or pause after dragging the timeline or clicking the map. The longer speed slider has 11 steps from 0.5× to 50×.
+- Match history filters by map name, date, and battle type.
+
 ## 0.4.5
 
 - Match replays can show all inferred teammate death locations up to the selected time, including markers whose trails have faded.
