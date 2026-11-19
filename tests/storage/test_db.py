@@ -128,6 +128,30 @@ def test_first_sortie_army(conn):
     assert db.first_sortie_army(conn, match_id, placeholders) == "air"
 
 
+def test_get_match_vehicles(conn):
+    first = db.start_match(conn, "hash1")
+    second = db.start_match(conn, "hash2")
+    placeholders = ("", "dummy_plane")
+    player = db.PositionRecord(0.5, 0.5, "#faC81E", "ground_model", "Player", 0)
+    # 选车界面点击（无 Player 位置）不会被计入出击载具。
+    db.add_tick(conn, first, db.TickRecord(0.5, "tank", "germ_panzerjager_tiger", 0, 0), [POSITION])
+    for timestamp, vehicle in ((0.0, "dummy_plane"), (1.0, "ussr_t_80u"), (2.0, "ka_50"), (3.0, "ussr_t_80u")):
+        db.add_tick(conn, first, db.TickRecord(timestamp, "tank", vehicle, 0, 0), [player])
+    db.add_tick(conn, second, db.TickRecord(1.0, "tank", "", 0, 0), [player])
+    assert db.get_match_vehicles(conn, placeholders) == {first: ["ussr_t_80u", "ka_50"]}
+
+
+def test_air_view_and_nuke_event_queries(conn):
+    match_id = db.start_match(conn, "hash")
+    assert db.has_air_view(conn, match_id) is False
+    assert db.has_nuke_event(conn, match_id) is False
+    db.add_tick(conn, match_id, db.TickRecord(1.0, "tank", "", 0, 1), [POSITION])
+    db.add_events(conn, match_id, [db.EventRecord(2.0, 1, "Pilot 投\u200b放\u200b了\u200b核\u200b武\u200b器！", "{}")])
+    assert db.has_air_view(conn, match_id) is True
+    assert db.has_nuke_event(conn, match_id) is True
+    assert db.get_nuke_event_match_ids(conn) == {match_id}
+
+
 def test_events_roundtrip(conn):
     match_id = db.start_match(conn, "hash")
     db.add_events(conn, match_id, [

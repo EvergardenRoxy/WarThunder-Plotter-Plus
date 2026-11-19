@@ -2,6 +2,14 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.4.7
+
+- Refined the dark UI with tactical amber-gold accents, frosted-glass map overlays, a pulsing live badge, and aligned Start/Duration column headers in Match history.
+- Match history now shows lazy-loaded map thumbnails, actual spawned sortie vehicle chips (ignoring spawn-screen clicks), highlighted nuke badges, and auto-submitting date/mode filters.
+- Added focus mode (collapsible sidebar, shortcut `B`), Follow me camera lock (`F`, auto-releases on drag), an adjustable map darken slider (0%–60%), and a compact playback speed stepper with full keyboard shortcuts (`←/→` ±5s / `Shift` ±15s, `[/]` speed, `R`/`0` reset zoom, `L` back to live).
+- Added clickable sortie timeline pills below the playbar, battle feed filters (`All / Combat / Awards / Hide leaves`) with zero-width-space handling for Chinese HUD messages, color-coded timeline event markers, and richer tooltips for death markers (knockout time) and capture zones (owner and time).
+- Fixed ground/air map toggle visibility on matches with air-view data (including nuke flights), nuke detection from battle feed events, and player icon categorization when the game temporarily flashes the player marker blue or green.
+
 ## 0.4.6
 
 - The dark match viewer keeps map controls above the scrollable battle feed. The timeline marks battle events, and tracks fade with age even when the full trail is shown.

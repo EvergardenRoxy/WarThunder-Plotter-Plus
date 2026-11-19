@@ -44,8 +44,14 @@ const VIEW_STYLE = Object.freeze({
     fadeLevels: 40,
     blipRange: [0.25, 1.5],
     lineScaleRange: [0.5, 2],
+    mapDimRange: [0, 0.6],
+    feedFilters: Object.freeze(['all', 'kill', 'award', 'no_leave']),
     speedOptions: Object.freeze([0.5, 1, 2, 5, 8, 10, 15, 20, 25, 40, 50]),
-    defaults: { trail: 30, blipSize: 0.5, lineScale: 1, speed: 10, showAllFriendlyDeaths: false, followFeed: true },
+    defaults: {
+        trail: 30, blipSize: 0.5, lineScale: 1, mapDim: 0.25, speed: 10,
+        showAllFriendlyDeaths: false, followFeed: true, followPlayer: false,
+        sidebarCollapsed: false, feedFilter: 'all',
+    },
     settingsKey: 'wtp.viewer',
 });
 
@@ -57,7 +63,7 @@ const nearestSpeed = value => VIEW_STYLE.speedOptions.reduce((best, speed) =>
 class MatchViewer {
     constructor(canvasId, matchId, {
         isLive = false, battleType = 'ground', mapKind = 'ground', pollInterval = 500, placeholderVehicles = [],
-        onRender, onPlayStateChange, onEvents, onMapUpdate,
+        onRender, onPlayStateChange, onEvents, onMapUpdate, onFollowPlayerChange,
     } = {}) {
         this.canvas = document.getElementById(canvasId);
         this.ctx = this.canvas.getContext('2d');
@@ -71,10 +77,12 @@ class MatchViewer {
         this.onPlayStateChange = onPlayStateChange;
         this.onEvents = onEvents;
         this.onMapUpdate = onMapUpdate;
+        this.onFollowPlayerChange = onFollowPlayerChange;
         this.events = [];
         this.lastEventTimestamp = 0;
         this.selectedEvent = null;
         this.ticks = [];
+        this.playerTickIds = new Set();
         this.positions = [];
         this.positionCount = 0;
         this.pois = [];
@@ -100,10 +108,14 @@ class MatchViewer {
         this.filters = { ...filters, ...settings.filters };
         this.blipSize = settings.blipSize;
         this.lineScale = settings.lineScale;
+        this.mapDim = clamp(settings.mapDim, VIEW_STYLE.mapDimRange);
         this.trail = settings.trail;
         this.speed = nearestSpeed(settings.speed);
         this.showAllFriendlyDeaths = settings.showAllFriendlyDeaths;
         this.followFeed = settings.followFeed;
+        this.followPlayer = Boolean(settings.followPlayer);
+        this.sidebarCollapsed = Boolean(settings.sidebarCollapsed);
+        this.feedFilter = VIEW_STYLE.feedFilters.includes(settings.feedFilter) ? settings.feedFilter : 'all';
         // null 表示跟随最新时刻，倒带时保存固定的比赛内毫秒数。
         this.selectedTime = null;
         this.maxTimestamp = 0;
@@ -184,6 +196,11 @@ class MatchViewer {
             if (this.isPanning) {
                 const dx = e.clientX - this.lastMouseX;
                 const dy = e.clientY - this.lastMouseY;
+                if ((dx || dy) && this.followPlayer) {
+                    this.followPlayer = false;
+                    this._saveSettings();
+                    this.onFollowPlayerChange?.(false);
+                }
                 this.panX += dx;
                 this.panY += dy;
                 this.lastMouseX = e.clientX;
@@ -222,10 +239,20 @@ class MatchViewer {
         return [(this.viewWidth - this.width) / 2, (this.viewHeight - this.height) / 2];
     }
 
-    // 兵种名；已知具体型号（只有自己）时一并显示。
+    // 兵种名；已知具体型号（只有自己）、阵亡时间或占领点时附带状态信息。
     _markerLabel(marker) {
+        if (marker.kind === 'capture_zone') {
+            return t('viewer.capture_zone_tooltip', {
+                owner: t(`viewer.owner_${marker.owner}`),
+                time: this.formatTime(marker.timestamp),
+            });
+        }
         const name = t(`unit.${marker.icon}`);
-        return marker.vehicle ? `${name} · ${this._vehicleName(marker.vehicle)}` : name;
+        const base = marker.vehicle ? `${name} · ${this._vehicleName(marker.vehicle)}` : name;
+        if (marker.deathTime !== undefined) {
+            return t('viewer.marker_knocked_out', { unit: base, time: this.formatTime(marker.deathTime) });
+        }
+        return base;
     }
 
     _vehicleName(raw) {
@@ -345,7 +372,10 @@ class MatchViewer {
                     const tick = tickMap.get(pos.tick_id);
                     if (!tick) continue;
 
-                    if (!pos.is_poi) this.positionCount++;
+                    if (!pos.is_poi) {
+                        this.positionCount++;
+                        if (pos.icon === VIEW_STYLE.playerIcon) this.playerTickIds.add(pos.tick_id);
+                    }
                     // 不显示的单位（火炮、碉堡、舰船等）直接丢弃。
                     if (!pos.is_poi && !this._isShownUnit(pos)) continue;
 
@@ -484,6 +514,7 @@ class MatchViewer {
         const type = pos.type.toLowerCase();
         if (type === 'capture_zone') return 'capture_zone';
         if (type.includes('respawn') || type.includes('airfield')) return 'respawn';
+        if (pos.icon === VIEW_STYLE.playerIcon) return 'player';
         return this._nearestColor(pos.color, VIEW_STYLE.teamColors, VIEW_STYLE.maxColorDistance);
     }
 
@@ -586,8 +617,43 @@ class MatchViewer {
         const ctx = this.ctx;
         const w = this.width;
         const h = this.height;
+        const cutoff = this.getTimelineTime();
+        const trailDuration = this.trail ? this.trail * 1000 : Math.max(1, cutoff);
+        const { capture, respawn } = this._getPoiClusters(cutoff);
+        this.poiCount = capture.length + respawn.length;
+
+        const current = [];
+        const deaths = [];
+        const fades = new Map();
+        let playerPoint = null;
+        for (const { category, points } of this.tracks) {
+            if (!this.filters[category]) continue;
+            const [start, end] = this._visibleRange(points, cutoff);
+            if (end < 0) continue;
+            const point = points[end];
+            const inTrail = start <= end;
+            if (inTrail) {
+                if (!fades.has(category)) fades.set(category, []);
+                this._addTrack(fades.get(category), points, start, end, cutoff - trailDuration, trailDuration);
+                if (cutoff - point.t <= VIEW_STYLE.aliveWindow) {
+                    current.push({ category, point, previous: points[end - 1] });
+                    if (category === 'player') playerPoint = point;
+                }
+            }
+            const keepDeath = this.showAllFriendlyDeaths && (category === 'ally' || category === 'squad');
+            if ((inTrail || keepDeath) && this._isDeath(category, points, end, cutoff)) {
+                deaths.push({ category, point });
+            }
+        }
+
+        if (this.followPlayer && playerPoint) {
+            this.panX = this.viewWidth / 2 - playerPoint.x * w * this.zoom;
+            this.panY = this.viewHeight / 2 - playerPoint.y * h * this.zoom;
+            this._clampPan();
+        }
+
         ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-        ctx.fillStyle = '#1a1a1a';
+        ctx.fillStyle = '#15191f';
         ctx.fillRect(0, 0, this.viewWidth, this.viewHeight);
         ctx.save();
         ctx.translate(this.panX, this.panY);
@@ -609,43 +675,18 @@ class MatchViewer {
                 ctx.stroke();
             }
         }
-        ctx.fillStyle = `rgba(0,0,0,${VIEW_STYLE.mapDim})`;
+        const mapDim = this.mapDim ?? VIEW_STYLE.mapDim;
+        ctx.fillStyle = `rgba(0,0,0,${mapDim})`;
         ctx.fillRect(0, 0, w, h);
 
-        const cutoff = this.getTimelineTime();
-        const trailDuration = this.trail ? this.trail * 1000 : Math.max(1, cutoff);
-        const { capture, respawn } = this._getPoiClusters(cutoff);
-        this.poiCount = capture.length + respawn.length;
+        this.markers = [];
         if (this.filters.capture_zone) {
             for (const point of capture) this._drawPoi(point, true);
         }
         if (this.filters.respawn) {
             for (const point of respawn) this._drawPoi(point, false);
         }
-
-        const current = [];
-        const deaths = [];
-        const fades = new Map();
-        for (const { category, points } of this.tracks) {
-            if (!this.filters[category]) continue;
-            const [start, end] = this._visibleRange(points, cutoff);
-            if (end < 0) continue;
-            const point = points[end];
-            const inTrail = start <= end;
-            if (inTrail) {
-                if (!fades.has(category)) fades.set(category, []);
-                this._addTrack(fades.get(category), points, start, end, cutoff - trailDuration, trailDuration);
-                if (cutoff - point.t <= VIEW_STYLE.aliveWindow) {
-                    current.push({ category, point, previous: points[end - 1] });
-                }
-            }
-            const keepDeath = this.showAllFriendlyDeaths && (category === 'ally' || category === 'squad');
-            if ((inTrail || keepDeath) && this._isDeath(category, points, end, cutoff)) {
-                deaths.push({ category, point });
-            }
-        }
         this._drawFades(fades);
-        this.markers = [];
         for (const { category, point, previous } of current) this._drawCurrent(category, point, previous);
         for (const { category, point } of deaths) this._drawDeath(category, point);
 
@@ -740,7 +781,8 @@ class MatchViewer {
         const x = point.x * this.width;
         const y = point.y * this.height;
         const style = isCapture ? VIEW_STYLE.capture : VIEW_STYLE.respawn;
-        const color = this._ownerColor(point.color);
+        const owner = this._nearestColor(point.color, VIEW_STYLE.ownerColors);
+        const color = VIEW_STYLE.ownerColors[owner];
         ctx.beginPath();
         if (isCapture) {
             ctx.arc(x, y, style.radius / this.zoom, 0, Math.PI * 2);
@@ -758,6 +800,12 @@ class MatchViewer {
         ctx.lineWidth = style.border / this.zoom;
         ctx.strokeStyle = color;
         ctx.stroke();
+        if (isCapture) {
+            this.markers.push({
+                sx: x * this.zoom + this.panX, sy: y * this.zoom + this.panY, r: style.radius,
+                kind: 'capture_zone', owner, timestamp: point.timestamp,
+            });
+        }
     }
 
     _drawCurrent(category, point, previous) {
@@ -787,25 +835,33 @@ class MatchViewer {
         this._registerMarker(point, x, y, size / 2);
     }
 
-    _registerMarker(point, x, y, radius) {
+    _registerMarker(point, x, y, radius, extra = {}) {
         this.markers.push({
             sx: x * this.zoom + this.panX, sy: y * this.zoom + this.panY, r: radius * this.zoom,
-            icon: point.icon, vehicle: point.vehicle,
+            icon: point.icon, vehicle: point.vehicle, ...extra,
         });
     }
 
-    // 返回屏幕坐标下最近的单位标记。重合时选最上面绘制的一个。
+    // 返回屏幕坐标下最近的标记：单位标记优先于占领点圆圈，同级重合选最上层。
     _markerAt(sx, sy) {
-        let best = null;
-        let bestDistance = Infinity;
+        let bestUnit = null;
+        let bestUnitDist = Infinity;
+        let bestPoi = null;
+        let bestPoiDist = Infinity;
         for (const marker of this.markers) {
             const distance = Math.hypot(marker.sx - sx, marker.sy - sy);
-            if (distance <= marker.r + VIEW_STYLE.hoverSlop && distance <= bestDistance) {
-                best = marker;
-                bestDistance = distance;
+            if (distance > marker.r + VIEW_STYLE.hoverSlop) continue;
+            if (marker.kind === 'capture_zone') {
+                if (distance <= bestPoiDist) {
+                    bestPoi = marker;
+                    bestPoiDist = distance;
+                }
+            } else if (distance <= bestUnitDist) {
+                bestUnit = marker;
+                bestUnitDist = distance;
             }
         }
-        return best;
+        return bestUnit ?? bestPoi;
     }
 
     _drawDeath(category, point) {
@@ -818,13 +874,23 @@ class MatchViewer {
         cross.moveTo(x + half, y - half);
         cross.lineTo(x - half, y + half);
         this._strokeMark(category, cross);
-        this._registerMarker(point, x, y, half * Math.SQRT2);
+        if (this.selectedEvent && point.t !== undefined && Math.abs(point.t - this.selectedEvent.timestamp) <= 2500) {
+            const ctx = this.ctx;
+            ctx.beginPath();
+            ctx.arc(x, y, half * 2.2, 0, Math.PI * 2);
+            ctx.strokeStyle = '#e5b82e';
+            ctx.lineWidth = 2 / this.zoom;
+            ctx.stroke();
+        }
+        this._registerMarker(point, x, y, half * Math.SQRT2, { deathTime: point.t });
     }
 
     _saveSettings() {
         window.Settings.save(VIEW_STYLE.settingsKey, {
-            trail: this.trail, blipSize: this.blipSize, lineScale: this.lineScale, speed: this.speed,
-            filters: this.filters, showAllFriendlyDeaths: this.showAllFriendlyDeaths, followFeed: this.followFeed,
+            trail: this.trail, blipSize: this.blipSize, lineScale: this.lineScale, mapDim: this.mapDim,
+            speed: this.speed, filters: this.filters, showAllFriendlyDeaths: this.showAllFriendlyDeaths,
+            followFeed: this.followFeed, followPlayer: this.followPlayer,
+            sidebarCollapsed: this.sidebarCollapsed, feedFilter: this.feedFilter,
         });
     }
 
@@ -852,9 +918,47 @@ class MatchViewer {
         this._render();
     }
 
+    setMapDim(dim) {
+        this.mapDim = clamp(dim, VIEW_STYLE.mapDimRange);
+        this._saveSettings();
+        this._render();
+    }
+
+    setFollowPlayer(enabled) {
+        this.followPlayer = Boolean(enabled);
+        this._saveSettings();
+        this.onFollowPlayerChange?.(this.followPlayer);
+        this._render();
+    }
+
+    setSidebarCollapsed(collapsed) {
+        this.sidebarCollapsed = Boolean(collapsed);
+        this._saveSettings();
+    }
+
+    setFeedFilter(filter) {
+        this.feedFilter = filter;
+        this._saveSettings();
+    }
+
     setSpeed(speed) {
         this.speed = nearestSpeed(speed);
         this._saveSettings();
+    }
+
+    stepSpeed(delta) {
+        const speeds = VIEW_STYLE.speedOptions;
+        const index = clamp(speeds.indexOf(this.speed) + delta, [0, speeds.length - 1]);
+        this.setSpeed(speeds[index]);
+        return this.speed;
+    }
+
+    stepTimeline(deltaMs) {
+        const max = this.getTimelineMax();
+        if (max === 0) return;
+        this.pause();
+        const next = clamp(this.getTimelineTime() + deltaMs, [0, max]);
+        this.setTimelineTime(next);
     }
 
     setFollowFeed(enabled) {

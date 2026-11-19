@@ -29,7 +29,12 @@ HISTORY_MODES = {
     BattleType.NAVAL.value: (BattleType.NAVAL.value, BattleType.AIR_IN_NAVAL.value),
 }
 
-PLAYER_LEFT = re.compile(r"\s*(?:已掉线[。.]?|td! kd\?NET_PLAYER_DISCONNECT_FROM_GAME)\s*$")
+PLAYER_LEFT = re.compile(r"\s*(?:已\u200b?掉\u200b?线[。.]?|td! kd\?NET_PLAYER_DISCONNECT_FROM_GAME)\s*$")
+
+
+def format_vehicle_name(raw: str) -> str:
+    """将原始载具标识转为展示名。"""
+    return raw.rsplit("/", 1)[-1].replace("_", " ")
 
 
 def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Capturer | None) -> Flask:
@@ -73,11 +78,14 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
         army = db.first_sortie_army(connection(), match.id, CAPTURE_DEFAULTS.placeholder_vehicles)
         return army == CAPTURE_DEFAULTS.air_army_type
 
-    def match_summary(match):
+    def match_summary(match, nuke_ids=None):
         info = map_metadata(match.map_hash)
+        nuke = bool(match.nuke_detected) or (
+            match.id in nuke_ids if nuke_ids is not None else db.has_nuke_event(connection(), match.id)
+        )
         return {
             "id": match.id, "started_at": match.started_at, "ended_at": match.ended_at,
-            "nuke_detected": match.nuke_detected, "initial_capture_count": match.initial_capture_count,
+            "nuke_detected": int(nuke), "initial_capture_count": match.initial_capture_count,
             "initial_capture_x": match.initial_capture_x, "initial_capture_y": match.initial_capture_y,
             **info,
             "mode": BattleType.AIR.value if is_air_battle(match) else info["battle_type"],
@@ -86,12 +94,14 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
     def map_label(info, mode):
         return f"{BATTLE_ICONS[mode]} {info['map_name']}".strip()
 
-    def match_page_data(match):
-        payload = match_summary(match)
+    def match_page_data(match, nuke_ids=None):
+        payload = match_summary(match, nuke_ids)
         air_map = map_metadata(match.air_map_hash) if match.air_map_hash else None
+        has_air_view = bool(air_map) or db.has_air_view(connection(), match.id)
         return {
             **payload,
             "air_map": air_map,
+            "has_air_view": has_air_view,
             "default_map": "air" if air_map and payload["mode"] == BattleType.AIR.value else "ground",
             "mode_label": t(f"battle_type.{payload['mode']}"),
             "map_title": map_label(payload, payload["mode"]),
@@ -113,6 +123,8 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
         map_search = map_query.casefold()
         selected_mode = request.args.get("mode", "")
         allowed_modes = HISTORY_MODES.get(selected_mode, ())
+        vehicles_by_match = db.get_match_vehicles(conn, CAPTURE_DEFAULTS.placeholder_vehicles)
+        nuke_ids = db.get_nuke_event_match_ids(conn)
         matches_by_date = {}
         for match in db.get_all_matches(conn):
             start = datetime.fromisoformat(match.started_at)
@@ -120,7 +132,7 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
             if selected_date and day != selected_date:
                 continue
 
-            info = match_page_data(match)
+            info = match_page_data(match, nuke_ids)
             if allowed_modes and info["mode"] not in allowed_modes:
                 continue
             if map_search:
@@ -131,11 +143,14 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
                     continue
 
             end = datetime.fromisoformat(match.ended_at) if match.ended_at else datetime.now()
+            map_hash = match.air_map_hash if info["default_map"] == "air" else match.map_hash
             matches_by_date.setdefault(day, []).append({
                 **info,
                 "start_time": start.strftime("%H:%M"),
                 "duration_seconds": max(0, int((end - start).total_seconds())),
                 "position_count": db.count_positions(conn, match.id),
+                "vehicles": [format_vehicle_name(v) for v in vehicles_by_match.get(match.id, ())],
+                "has_map_image": bool(map_hash),
             })
         return render_template(
             "index.html", matches_by_date=matches_by_date, selected_date=selected_date,
@@ -161,8 +176,9 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
     @app.get("/api/matches")
     def api_matches():
         conn = connection()
+        nuke_ids = db.get_nuke_event_match_ids(conn)
         return jsonify([
-            {**match_summary(match), "position_count": db.count_positions(conn, match.id)}
+            {**match_summary(match, nuke_ids), "position_count": db.count_positions(conn, match.id)}
             for match in db.get_all_matches(conn)
         ])
 
