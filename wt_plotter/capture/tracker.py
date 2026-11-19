@@ -77,6 +77,9 @@ class MatchTracker:
             db.EventRecord(now - state.started_at, entry["id"], entry["msg"], json.dumps(entry, ensure_ascii=False))
             for entry in entries
         ])
+        if not state.nuke_detected and any(_is_nuke_message(entry["msg"]) for entry in entries):
+            db.set_nuke(self.conn, state.match_id)
+            state.nuke_detected = True
 
     def end_match(self) -> None:
         if self.match_id is not None:
@@ -145,8 +148,6 @@ class MatchTracker:
         if vehicle:
             self.vehicle_type = vehicle
         is_air = army == CAPTURE_DEFAULTS.air_army_type
-        if is_air:
-            self._maybe_capture_air_map()
 
         low, high = CAPTURE_SETTINGS.valid_coord_min, CAPTURE_SETTINGS.valid_coord_max
         valid_objects = [
@@ -182,6 +183,8 @@ class MatchTracker:
             air_view = not state.previous_air_view
         else:
             air_view = state.previous_air_view
+        if is_air or air_view:
+            self._maybe_capture_air_map()
         if air_view and not state.previous_air_view and state.transform is None and state.previous_objects:
             state.transform = fit_air_transform(state.previous_objects, objects)
             if state.transform is not None:
@@ -237,3 +240,9 @@ class MatchTracker:
         path = self.maps_dir / f"{key}.png"
         if not path.exists():
             path.write_bytes(image)
+
+
+def _is_nuke_message(msg: str) -> bool:
+    """判断战报是否包含核武器相关消息（兼容游戏插入的零宽空格）。"""
+    clean = msg.replace("\u200b", "").casefold()
+    return "☢" in clean or "核武器" in clean or "nuclear" in clean

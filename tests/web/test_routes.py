@@ -281,3 +281,42 @@ def test_shared_timeline_and_friendly_death_toggle_in_live_and_replay(client, co
 def test_mode_without_air_map_is_map_type(client, conn, match_id):
     _sortie(conn, match_id, "air", "f-4s")
     assert client.get("/api/matches").json[0]["mode"] == "ground"
+
+
+def test_index_renders_map_thumbnail_vehicle_chips_and_nuke_badge(client, conn, match_id):
+    ally = db.PositionRecord(0.4, 0.4, "#174DFF", "ground_model", "MediumTank", 0)
+    player = db.PositionRecord(0.5, 0.5, "#faC81E", "ground_model", "Player", 0)
+    db.add_tick(conn, match_id, db.TickRecord(0.0, "air", "dummy_plane", 1, 0), [player])
+    db.add_tick(conn, match_id, db.TickRecord(0.5, "tank", "germ_panzerjager_tiger", 0, 0), [ally])
+    db.add_tick(conn, match_id, db.TickRecord(1.0, "tank", "tankModels/ussr_t_80u", 0, 0), [player])
+    db.add_tick(conn, match_id, db.TickRecord(5.0, "air", "ka_50", 1, 1), [player])
+    db.add_events(conn, match_id, [db.EventRecord(8.0, 1, "Pilot 投\u200b放\u200b了\u200b核\u200b武\u200b器！", "{}")])
+    html = client.get("/").text
+    assert f'/api/match/{match_id}/map.png' in html
+    assert '<span class="vehicle-chip">ussr t 80u</span>' in html
+    assert '<span class="vehicle-chip">ka 50</span>' in html
+    assert "germ panzerjager tiger" not in html
+    assert "dummy plane" not in html
+    assert '<span class="badge nuke">' in html
+    assert translate("en", "index.col_start") in html
+    assert translate("en", "index.col_duration") in html
+    match_html = client.get(f"/match/{match_id}").text
+    assert 'id="nuke-badge" class="badge nuke">' in match_html
+    assert 'id="map-kind" role="group"' in match_html
+    assert 'id="map-kind" role="group" aria-label="Base map" hidden' not in match_html
+
+
+def test_match_page_includes_enhanced_viewer_controls(client, match_id):
+    html = client.get(f"/match/{match_id}").text
+    for marker in (
+        'id="toggle-sidebar"',
+        'id="follow-player"',
+        'id="map-dim"',
+        'id="speed-select"',
+        'id="sortie-list"',
+        'id="nuke-badge"',
+        'data-feed-filter="kill"',
+        'data-feed-filter="award"',
+        'data-feed-filter="no_leave"',
+    ):
+        assert marker in html, marker

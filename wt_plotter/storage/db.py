@@ -360,6 +360,58 @@ def first_sortie_army(conn: sqlite3.Connection, match_id: int, placeholders: tup
     return row["army_type"] if row is not None else None
 
 
+def get_match_vehicles(conn: sqlite3.Connection, placeholders: tuple[str, ...]) -> dict[int, list[str]]:
+    """按首次实际出场顺序返回每场比赛的出击载具（要求该 tick 有 Player 位置，跳过选车界面点击）。"""
+    marks = ", ".join("?" * len(placeholders))
+    rows = conn.execute(
+        f"""
+        SELECT tk.match_id, vt.value AS vehicle_type
+        FROM ticks tk
+        JOIN enum_vehicle_types vt ON vt.id = tk.vehicle_type_id
+        WHERE vt.value != '' AND vt.value NOT IN ({marks})
+          AND EXISTS (
+              SELECT 1 FROM positions p
+              JOIN enum_icons i ON i.id = p.icon_id
+              WHERE p.tick_id = tk.id AND i.value = 'Player'
+          )
+        GROUP BY tk.match_id, vt.value
+        ORDER BY tk.match_id, MIN(tk.timestamp_ms), MIN(tk.id)
+        """,
+        placeholders,
+    )
+    vehicles: dict[int, list[str]] = {}
+    for row in rows:
+        vehicles.setdefault(row["match_id"], []).append(row["vehicle_type"])
+    return vehicles
+
+
+def has_air_view(conn: sqlite3.Connection, match_id: int) -> bool:
+    """检查比赛是否包含空中视角 tick。"""
+    row = conn.execute(
+        "SELECT 1 FROM ticks WHERE match_id = ? AND is_player_air_view = 1 LIMIT 1",
+        (match_id,),
+    ).fetchone()
+    return row is not None
+
+
+_NUKE_EVENT_SQL = "msg LIKE '%☢%' OR msg LIKE '%核%武%器%' OR LOWER(msg) LIKE '%nuclear%'"
+
+
+def get_nuke_event_match_ids(conn: sqlite3.Connection) -> set[int]:
+    """返回播报中出现过核武器消息的比赛 ID 集合。"""
+    rows = conn.execute(f"SELECT DISTINCT match_id FROM events WHERE {_NUKE_EVENT_SQL}")
+    return {row["match_id"] for row in rows}
+
+
+def has_nuke_event(conn: sqlite3.Connection, match_id: int) -> bool:
+    """检查单场比赛播报中是否出现核武器消息。"""
+    row = conn.execute(
+        f"SELECT 1 FROM events WHERE match_id = ? AND ({_NUKE_EVENT_SQL}) LIMIT 1",
+        (match_id,),
+    ).fetchone()
+    return row is not None
+
+
 def count_positions(conn: sqlite3.Connection, match_id: int) -> int:
     return conn.execute("SELECT COUNT(*) FROM positions WHERE match_id = ?", (match_id,)).fetchone()[0]
 

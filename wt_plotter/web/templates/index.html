@@ -22,26 +22,41 @@
 </form>
 {% for day, matches in matches_by_date.items() %}
 <section class="match-day">
-<h3><time datetime="{{ day }}">{{ day }}</time></h3>
+<div class="match-day-head">
+    <h3><time datetime="{{ day }}">{{ day }}</time></h3>
+    {% if loop.first %}
+    <div class="match-col-headers" aria-hidden="true">
+        <span class="match-time"><span>{{ t('index.col_start') }}</span><span>{{ t('index.col_duration') }}</span></span>
+        <span class="match-open-spacer">{{ t('index.open_replay') }}</span>
+    </div>
+    {% endif %}
+</div>
 <div class="match-list">
     {% for match in matches %}
     <div class="match-row">
         <a href="{{ url_for('match_view', match_id=match.id) }}" class="match-item{% if not match.ended_at %} active{% endif %}">
+            <span class="match-thumb-wrap" aria-hidden="true">{% if match.has_map_image %}<img class="match-thumb" src="{{ url_for('api_map_image', match_id=match.id, kind=match.default_map) }}" alt="" loading="lazy" width="48" height="48">{% endif %}</span>
             <div class="match-info">
                 <div class="match-identity">
                     <span class="match-number">{{ t('index.match_number', id=match.id) }}</span>
                     <span class="match-map">{{ match.map_name }}</span>
                     <span class="match-kind">{{ match.mode_label }}</span>
+                    {% if match.nuke_detected %}
+                    <span class="badge nuke">☢ {{ t('match.nuke') }}</span>
+                    {% endif %}
                 </div>
                 <div class="match-facts">
+                    {% for vehicle in match.vehicles[:4] %}
+                    <span class="vehicle-chip">{{ vehicle }}</span>
+                    {% endfor %}
+                    {% if match.vehicles | length > 4 %}
+                    <span class="vehicle-chip">+{{ match.vehicles | length - 4 }}</span>
+                    {% endif %}
                     {% if match.air_map %}
                     <span class="match-stats">{{ match.air_map_label }}</span>
                     {% endif %}
                     {% if match.initial_capture_count is not none %}
                     <span class="match-stats">{{ t('match.capture_zones', count=match.initial_capture_count) }}</span>
-                    {% endif %}
-                    {% if match.nuke_detected %}
-                    <span class="match-stats">{{ t('match.nuke') }}</span>
                     {% endif %}
                     <span class="match-stats">{{ t('match.positions', count=match.position_count) }}</span>
                 </div>

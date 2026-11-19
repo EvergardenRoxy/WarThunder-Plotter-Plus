@@ -16,6 +16,7 @@ function makeViewer(context, properties = {}) {
         lastEventTimestamp: 0,
         events: [],
         ticks: [],
+        playerTickIds: new Set(),
         positionCount: 0,
         positions: [],
         pois: [],
@@ -35,6 +36,9 @@ test('categorizes team colors, map objects and gray markers', () => {
     }
     assert.equal(viewer._categorize({ type: 'capture_zone' }), 'capture_zone');
     assert.equal(viewer._categorize({ type: 'respawn_base_tank' }), 'respawn');
+    // 游戏偶尔将本人图标短暂闪成友军蓝或小队绿，按 Player 图标固定归入 player，防止轨迹断裂或双标。
+    assert.equal(viewer._categorize({ type: 'ground_model', icon: 'Player', color: '#043FFF' }), 'player');
+    assert.equal(viewer._categorize({ type: 'ground_model', icon: 'Player', color: '#67D756' }), 'player');
 });
 
 test('normalizes POI colors to the nearest owner', () => {
@@ -555,4 +559,65 @@ test('gaps in a track are not drawn as lines', () => {
     const viewer = makeViewer(load('tracks.js', 'viewer.js'));
     assert.equal(viewer._isGap({ t: 0 }, { t: 250 }), false);
     assert.equal(viewer._isGap({ t: 0 }, { t: 2000 }), true);
+});
+
+test('map dim clamps and saves to localStorage', () => {
+    const context = load('tracks.js', 'settings.js', 'viewer.js');
+    const viewer = makeViewer(context);
+    viewer.setMapDim(0.9);
+    assert.equal(viewer.mapDim, 0.6);
+    viewer.setMapDim(-0.2);
+    assert.equal(viewer.mapDim, 0);
+    viewer.setMapDim(0.35);
+    assert.equal(JSON.parse(context.localStorage.getItem('wtp.viewer')).mapDim, 0.35);
+});
+
+test('follow player centers camera on current player position and notifies listener', () => {
+    const context = load('tracks.js', 'settings.js', 'viewer.js');
+    const notifications = [];
+    const viewer = makeViewer(context, {
+        width: 400, height: 400, viewWidth: 600, viewHeight: 400, zoom: 2, panX: 0, panY: 0,
+        maxTimestamp: 1000, trail: 30,
+        filters: { player: true },
+        tracks: [{ category: 'player', points: [{ t: 1000, x: 0.75, y: 0.25, icon: 'Player' }] }],
+        visiblePois: [],
+        mapImage: {},
+        ctx: { setTransform() {}, fillRect() {}, save() {}, translate() {}, scale() {}, drawImage() {}, restore() {} },
+        _render: context.window.MatchViewer.prototype._render,
+        _addTrack() {},
+        _drawFades() {},
+        _drawCurrent() {},
+        onFollowPlayerChange(enabled) { notifications.push(enabled); },
+    });
+    viewer.setFollowPlayer(true);
+    assert.deepEqual(notifications, [true]);
+    assert.equal(viewer.panX, -300);
+    assert.equal(viewer.panY, 0);
+});
+
+test('stepSpeed and stepTimeline clamp within valid bounds', () => {
+    const context = load('tracks.js', 'settings.js', 'viewer.js');
+    context.cancelAnimationFrame = () => {};
+    const viewer = makeViewer(context, { speed: 10, maxTimestamp: 20000, selectedTime: 4000 });
+    assert.equal(viewer.stepSpeed(1), 15);
+    assert.equal(viewer.stepSpeed(-1), 10);
+    viewer.stepTimeline(-10000);
+    assert.equal(viewer.getTimelineTime(), 0);
+    viewer.stepTimeline(5000);
+    assert.equal(viewer.getTimelineTime(), 5000);
+});
+
+test('marker labels include death time and capture zone owner, and unit hits beat zone hits', () => {
+    const context = load('tracks.js', 'viewer.js');
+    context.t = (key, params = {}) => `${key}${Object.values(params).length ? ':' + Object.values(params).join('|') : ''}`;
+    const viewer = makeViewer(context, {
+        markers: [
+            { sx: 100, sy: 100, r: 12, kind: 'capture_zone', owner: 'ally', timestamp: 65000 },
+            { sx: 104, sy: 100, r: 5, icon: 'HeavyTank', vehicle: '', deathTime: 125000 },
+        ],
+    });
+    assert.equal(viewer._markerAt(102, 100).icon, 'HeavyTank');
+    assert.equal(viewer._markerAt(92, 100).kind, 'capture_zone');
+    assert.equal(viewer._markerLabel(viewer.markers[0]), 'viewer.capture_zone_tooltip:viewer.owner_ally|1:05');
+    assert.equal(viewer._markerLabel(viewer.markers[1]), 'viewer.marker_knocked_out:unit.HeavyTank|2:05');
 });
