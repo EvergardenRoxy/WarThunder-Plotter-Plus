@@ -1,43 +1,43 @@
-<a id="ai-制作声明"></a>
-
-[![AI Assisted](https://img.shields.io/badge/AI-Claude%20Fable%205.2%20%2B%20Claude%20Opus%205.5-D97757?style=for-the-badge&logo=anthropic&logoColor=white)](#ai-制作声明)
-
-本项目在 ElBartt/WarThunder-Plotter 的基础上整体重建：Fable 5.2 负责设计、数据核对与复核，Opus 5.5 完成了大部分实现。
+<div align="center">
 
 # WT Plotter Plus
 
-[English](README.md)
+**适用于 Windows 的《战争雷霆》实时战术小地图与战局轨迹回放器**
 
-在 Windows 上记录《战争雷霆》每一局的战场态势：谁在哪里、往哪走、谁击毁了谁。打完之后可以在浏览器里拖动时间轴回放整局，也可以在对局中实时查看。
+*（重建自 [ElBartt/WarThunder-Plotter](https://github.com/ElBartt/WarThunder-Plotter)，MIT 协议）*
 
-数据全部来自游戏客户端自带的本机接口（`localhost:8111`，就是游戏内置的网页地图），不读内存、不改游戏文件，记录只保存在本机。
+本地优先的战场遥测记录与浏览器回放工具。仅读取游戏客户端自带的 `localhost:8111` 网页小地图接口，不读内存、不改游戏文件，所有录像均保存在本机。
 
-## 功能
+[![Release](https://img.shields.io/github/v/release/EvergardenRoxy/WarThunder-Plotter-Plus?label=release&color=e5b82e)](https://github.com/EvergardenRoxy/WarThunder-Plotter-Plus/releases)
+[![License](https://img.shields.io/badge/license-MIT-3b82f6)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows-0ea5e9)](#快速开始)
+[![Python](https://img.shields.io/badge/Python-3.11+-6366f1)](#源码运行)
+[![Language](https://img.shields.io/badge/lang-English%20%7C%20%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-22c55e)](README.md)
 
-- **[自动采集](docs/zh/capture.md)**：进入战局后自动开始记录，离开后自动结束，不需要手动操作。按小地图识别地图名，分辨陆战、空战和海战。
-- **[战局回放](docs/zh/viewer.md)**：在地图上按阵营画出每个单位的行动轨迹，轨迹越旧越淡。可以播放（5×～40×）、拖动时间轴、缩放和平移，按阵营筛选。
-- **[实时战局](docs/zh/viewer.md#实时战局)**：对局进行时同步显示，适合放在第二块屏幕上。
-- **[兵种与阵亡标记](docs/zh/viewer.md#读图)**：轻坦、中坦、重坦、坦歼、防空车、飞机各用不同形状；自己、小队和友军阵亡的位置画 ×。
-- **[空战图切换](docs/zh/viewer.md#地面图与空战图)**：陆战里开飞机时会另外记录空战图，回放时可以在两张底图之间切换。
-- **[战斗播报](docs/zh/viewer.md#战斗播报)**：记录游戏里的击毁、击落、起火等播报，回放时跟着时间轴滚动。
-- **中英文界面**：在导航栏切换，首次启动跟随 Windows 界面语言。
+[快速开始](#快速开始) · [核心功能](#核心功能) · [界面预览](#界面预览) · [快捷键](#快捷键) · [工作原理](#工作原理) · [文档导航](#文档导航) · [AI 参与声明](#ai-制作声明)
 
-## 示例
+</div>
 
-| 陆战回放 | 空战回放 |
-| --- | --- |
-| ![陆战回放](docs/images/match_ground.png) | ![空战回放](docs/images/match_air.png) |
+---
 
-示例中的战斗播报使用虚构昵称。更多示例：[历史战局列表](docs/images/match_list.png)。
+## 快速开始
 
-## 安装
+### 便携版 EXE（推荐）
 
-- **便携版**：从 [Releases](https://github.com/EvergardenRoxy/WarThunder-Plotter-Plus/releases) 下载 `WarThunderPlotterPlus-portable.exe`，放进一个可写的文件夹，双击运行。
-- **源码版**：安装 Python 3.11 和 Windows Python Launcher，在仓库根目录运行 `scripts\setup.bat`。
+1. 前往 [GitHub Releases](https://github.com/EvergardenRoxy/WarThunder-Plotter-Plus/releases) 下载 `WarThunderPlotterPlus-portable.exe`。
+2. 放进任意可写文件夹，双击运行。
+3. 启动《战争雷霆》进入对局，浏览器会自动打开「实时战局」并开始绘制轨迹。
 
-## 使用
+### 源码运行
 
-先启动程序，再进游戏打一局。程序会打开浏览器，停在“实时战局”页；进入战局后页面自动开始显示。打完的战局在“历史战局”里。
+需要安装 **Python 3.11+** 及 Windows Python Launcher（`py`）：
+
+```powershell
+scripts\setup.bat
+.\.venv\Scripts\python -m wt_plotter
+```
+
+### 命令行模式
 
 ```text
 WarThunderPlotterPlus-portable.exe            采集并打开实时页面（默认，等同 watch）
@@ -45,22 +45,101 @@ WarThunderPlotterPlus-portable.exe serve      只看历史战局，不采集
 WarThunderPlotterPlus-portable.exe capture    只采集，不开网页
 ```
 
-源码版把 EXE 换成 `.\.venv\Scripts\python -m wt_plotter`。网页默认在 `http://127.0.0.1:5000`，可用 `--host` 和 `--port` 修改。在网页右上角或系统托盘点“退出”关闭程序。
+网页默认监听 `http://127.0.0.1:5000`（可用 `--host` 和 `--port` 修改）。点击页面右上角或 Windows 系统托盘中的「退出」即可安全关闭。
 
-## 文档
+---
 
-- [采集与地图识别](docs/zh/capture.md)
-- [战局查看器](docs/zh/viewer.md)
-- [数据、设置与更新](docs/zh/data.md)
-- [架构](docs/zh/architecture.md)
-- [数据库](docs/zh/database.md)
-- [开发指南](docs/zh/development.md)
-- [翻译](docs/zh/translation.md)
-- [变更日志](CHANGELOG.zh-CN.md)
+## 核心功能
+
+- **[自动采集与地图识别](docs/zh/capture.md)** — 进入战局自动开始录制、离场自动结束。通过小地图 dHash 自动识别地图名，区分陆战、空战与海战，并结合切图与播报识别核弹局。
+- **[战术 HUD 战局查看器](docs/zh/viewer.md)** — 各阵营轨迹按时间连续渐隐；轻/中/重坦、坦歼、防空车、步战车与各型飞机拥有独立形状；悬停阵亡 `×` 可查看兵种与阵亡时刻，悬停占领点可查看归属与时间。
+- **[实时战局与即时倒带](docs/zh/viewer.md#实时战局)** — 非常适合副屏常驻：对局中同步刷新态势，随时拖动时间轴回看刚才的走位与交火，按「回到实时」（`L`）即可无缝追回最新进度。
+- **[专注模式与视角控制](docs/zh/viewer.md#侧栏设置)** — 支持一键折叠侧栏（`B`）、视角「跟随自己」（`F`，手动拖拽自动解除）、滚轮缩放与平移（50%～500%）、底图压暗强度调节（0%～60%）以及 11 档紧凑倍速器（`0.5×`～`50×`）。
+- **[出击时间线与空地底图切换](docs/zh/viewer.md#地面图与空战图)** — 播放条下方展示我方实际出击载具胶囊（自动跳过选车界面误点），点击可直达换车时刻；包含空中视角的陆战对局可在「地面图 / 空战图」间随时切换。
+- **[战斗播报筛选与联动](docs/zh/viewer.md#战斗播报)** — 完整记录 `/hudmsg` 击毁、击落、起火、嘉奖、核弹与离场消息，支持「全部 / 战果 / 嘉奖 / 隐藏离开」筛选，时间轴按事件类型着不同色标，点击播报直达对应时刻。
+- **[历史战局一览](docs/zh/viewer.md#历史战局)** — 按本地开局日期分组，展示地图缩略图、本局实际出击载具、`☢ 核弹` 徽章与对齐的「开局 / 时长」列，并支持地图名、日期和战局类型组合筛选。
+- **中英文双语界面** — 顶栏随时切换中英文，首次启动自动跟随 Windows 系统显示语言。
+
+---
+
+## 界面预览
+
+| 陆战回放 | 空战回放 |
+| :---: | :---: |
+| ![陆战回放](docs/images/match_ground.png) | ![空战回放](docs/images/match_air.png) |
+
+<details>
+<summary>历史战局列表预览</summary>
+
+![历史战局列表](docs/images/match_list.png)
+
+</details>
+
+> 截图中的战斗播报使用虚构玩家昵称。
+
+---
+
+## 快捷键
+
+| 按键 | 功能 |
+| :--- | :--- |
+| `Space` | 播放 / 暂停 |
+| `←` / `→` | 后退 / 前进 5 秒（按住 `Shift` 为 15 秒） |
+| `[` / `]` | 降低 / 提高回放倍速 |
+| `F` | 开关「跟随自己」视角锁定 |
+| `B` | 收起 / 展开侧栏（专注模式） |
+| `R` 或 `0` | 复位地图缩放与位置 |
+| `L` | 回到实时最新时刻（实时战局） |
+
+---
+
+## 工作原理
+
+```mermaid
+flowchart LR
+    WT["《战争雷霆》本机接口 (localhost:8111)"] --> Capture["后台采集线程"]
+    Capture --> SQLite[("本机 SQLite + 地图 PNG")]
+    SQLite --> Web["Flask 本地服务 (127.0.0.1:5000)"]
+    Web --> Browser["Canvas 查看器与回放页面"]
+```
+
+- **纯只读本机遥测**：仅轮询游戏内置网页地图的 `map_info.json`、`map_obj.json`、`map.img`、`indicators` 与 `hudmsg`。
+- **零侵入、纯本地**：不读取进程内存、不修改任何游戏文件，所有记录均保存在本地 `data/matches.db` 与 `data/maps/` 中。
+
+---
+
+## 文档导航
+
+| 文档 | 内容 |
+| :--- | :--- |
+| [采集与地图识别](docs/zh/capture.md) | 遥测轮询机制、dHash 地图识别、空地坐标换算 |
+| [战局查看器](docs/zh/viewer.md) | 读图图例、回放控制、实时倒带、战斗播报 |
+| [数据、设置与更新](docs/zh/data.md) | 存储目录、浏览器设置、便携版自动更新 |
+| [架构与文件索引](docs/zh/architecture.md) | 系统模块划分与源码文件速查表 |
+| [数据库](docs/zh/database.md) | SQLite 表结构与枚举设计 |
+| [开发指南](docs/zh/development.md) | 运行测试与打包 Windows 可执行文件 |
+| [翻译指南](docs/zh/translation.md) | 维护与扩展多语言词条 |
+| [变更日志](CHANGELOG.zh-CN.md) | 完整版本更新记录 |
+
+---
+
+<a id="ai-制作声明"></a>
+
+## AI 参与声明
+
+[![Built with Claude](https://img.shields.io/badge/AI-Claude%20Fable%205.2%20%2B%20Claude%20Opus%205.5-D97757?style=flat-square&logo=anthropic&logoColor=white)](#ai-制作声明)
+[![Enhanced with Antigravity](https://img.shields.io/badge/AI-Google%20Antigravity%20(Gemini)-4285F4?style=flat-square&logo=google&logoColor=white)](#ai-制作声明)
+
+本项目在人工主导、实测验收与审查下，结合多款 AI 编程助手协作完成：
+
+- **整体重建阶段（`v0.1`～`v0.4.6`）**：在 `ElBartt/WarThunder-Plotter` 基础上从零重建——**Claude Fable 5.2** 负责架构设计、数据核对与代码复核，**Claude Opus 5.5** 完成了核心功能实现。
+- **界面升级、交互增强与缺陷修复（`v0.4.7+`）**：**Google Antigravity (Gemini)** 参与完成了战术 HUD 深色视觉升级、历史战局缩略图/载具标签/列头注释、专注模式侧栏折叠、视角跟随、底图压暗调节、紧凑倍速器与复盘快捷键、出击时间线、战报语义筛选（含中文零宽空格兼容）、核弹与空战视角识别修复、本人图标变蓝/双标修复，以及配套测试与文档更新。
+
+---
 
 ## 来源与致谢
 
-本项目重建自 [ElBartt/WarThunder-Plotter](https://github.com/ElBartt/WarThunder-Plotter)，沿用它的数据库结构和地图哈希表，特别感谢。也感谢 Sgambe33 的 [WT-Plotter](https://github.com/Sgambe33/WT-Plotter)（轨迹绘制和地图哈希）以及 ValerieOSD 的 [WarThunderRPC](https://github.com/ValerieOSD/WarThunderRPC)。
+本项目重建自 [ElBartt/WarThunder-Plotter](https://github.com/ElBartt/WarThunder-Plotter)，沿用了它的数据库结构和地图哈希表基础，在此特别感谢。同时感谢 **Sgambe33** 的 [WT-Plotter](https://github.com/Sgambe33/WT-Plotter)（轨迹绘制与地图哈希）以及 **ValerieOSD** 的 [WarThunderRPC](https://github.com/ValerieOSD/WarThunderRPC)。
 
 本项目与 Gaijin Entertainment 没有关联。
 
