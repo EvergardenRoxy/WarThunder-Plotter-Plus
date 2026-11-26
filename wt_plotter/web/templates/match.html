@@ -28,6 +28,9 @@
         {% else %}
         <span class="badge ended">{{ t('match.ended') }}</span>
         {% endif %}
+        {% if report %}
+        <button type="button" id="open-report" class="btn btn-secondary">{{ t('replay.open') }}</button>
+        {% endif %}
         <button type="button" id="toggle-sidebar" class="btn btn-secondary" aria-pressed="false" title="{{ t('viewer.hide_sidebar') }}">{{ t('viewer.toggle_sidebar') }}</button>
         <details class="match-details">
             <summary title="{{ t('viewer.details') }}" aria-label="{{ t('viewer.details') }}">ⓘ</summary>
@@ -57,6 +60,7 @@
     {% elif shape == 'triangle' %}<polygon points="0,-6 6,6 -6,6"/>
     {% elif shape == 'pentagon' %}<polygon points="0,-6 5.7,-1.9 3.5,4.9 -3.5,4.9 -5.7,-1.9"/>
     {% elif shape == 'circle-cross' %}<circle r="6"/><path d="M-6 0H6M0 -6V6"/>
+    {% elif shape == 'ship' %}<polygon points="0,-6 3.3,-1.2 3.3,6 -3.3,6 -3.3,-1.2"/>
     {% else %}<polygon points="0,-6 4.8,6 0,2.4 -4.8,6"/>
     {% endif %}
 </svg>
@@ -68,7 +72,7 @@
         {% endif %}
         <div class="canvas-wrapper">
             <div id="unit-tooltip" class="unit-tooltip" hidden></div>
-            <canvas id="mapCanvas" tabindex="0" data-match-id="{{ match.id }}" data-live="{{ 'true' if is_live else 'false' }}" data-battle-type="{{ match.battle_type }}" data-has-air-map="{{ 'true' if match.air_map else 'false' }}" data-default-map="{{ match.default_map }}" data-placeholder-vehicles='{{ placeholder_vehicles | tojson }}' title="{{ t('viewer.zoom_hint') }}"></canvas>
+            <canvas id="mapCanvas" tabindex="0" data-match-id="{{ match.id }}" data-live="{{ 'true' if is_live else 'false' }}" data-battle-type="{{ match.battle_type }}" data-replay-tracks="{{ 'true' if match.replay_tracks else 'false' }}" data-has-air-map="{{ 'true' if match.air_map else 'false' }}" data-default-map="{{ match.default_map }}" data-placeholder-vehicles='{{ placeholder_vehicles | tojson }}' title="{{ t('viewer.zoom_hint') }}"></canvas>
             <div class="map-tools">
                 <div class="map-legend">
                     {% for value, color, label in filters[:4] %}
@@ -164,9 +168,14 @@
                     <span id="map-dim-value" class="control-value"></span>
                 </div>
                 <div class="unit-legend" id="unit-legend">
-                    {% for key, shape in [
+                    {% set surface_units = [
+                        ('unit.Boat', 'ship'), ('unit.Destroyer', 'ship'), ('unit.LightCruiser', 'ship'),
+                        ('unit.HeavyCruiser', 'ship'), ('unit.Battleship', 'ship'),
+                    ] if match.mode in ('naval', 'air_in_naval') else [
                         ('unit.LightTank', 'diamond'), ('unit.MediumTank', 'circle'), ('unit.HeavyTank', 'square'),
                         ('unit.TankDestroyer', 'triangle'), ('unit.SPAA', 'circle-cross'), ('unit.Wheeled', 'pentagon'),
+                    ] %}
+                    {% for key, shape in surface_units + [
                         ('unit.Fighter', 'arrow'), ('unit.Assault', 'arrow'), ('unit.Bomber', 'arrow'),
                     ] %}
                     <span class="legend-item">{{ legend_shape(shape) }}{{ t(key) }}</span>
@@ -195,6 +204,73 @@
         </section>
     </aside>
 </div>
+{% if report %}
+{% set rp = report.replay %}
+<dialog id="replay-report" class="replay-report" aria-labelledby="replay-report-title">
+    <header class="replay-report-head">
+        <div>
+            <h3 id="replay-report-title">{{ t('replay.title') }}</h3>
+            <span class="replay-source">{{ t('replay.server' if rp.is_server else 'replay.client') }} · {{ rp.mission }} · {{ (rp.duration * 1000) | int | clock }}</span>
+            {% for e in report.errors %}<p class="replay-error">{{ t('replay.parse_failed', source=e.source, error=e.parse_error) }}</p>{% endfor %}
+        </div>
+        <button type="button" class="btn btn-secondary" data-close-report>{{ t('replay.close') }}</button>
+    </header>
+    <div class="replay-teams">
+        {% for team, players in report.players | groupby('team') %}
+        <div class="replay-team">
+        <table class="replay-table">
+            <caption>{{ t('replay.team', team=team) }}</caption>
+            <thead>
+                <tr>
+                    <th>{{ t('replay.player') }}</th><th>{{ t('replay.vehicles') }}</th>
+                    <th title="{{ t('replay.kills_title') }}">{{ t('replay.kills') }}</th>
+                    <th title="{{ t('replay.ai_kills_title') }}">{{ t('replay.ai_kills') }}</th>
+                    <th>{{ t('replay.assists') }}</th><th>{{ t('replay.deaths') }}</th><th>{{ t('replay.score') }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in players %}
+                <tr>
+                    <td class="replay-player">{% if p.clan_tag %}<span class="replay-clan">{{ p.clan_tag }}</span> {% endif %}{{ p.name }}</td>
+                    <td class="replay-vehicles">{% for v in p.vehicles.split(',') if v %}<span class="vehicle-chip">{{ v | vehicle }}</span>{% endfor %}</td>
+                    <td>{{ p.kills + p.ground_kills + p.naval_kills }}</td>
+                    <td>{{ p.ai_kills + p.ai_ground_kills + p.ai_naval_kills }}</td>
+                    <td>{{ p.assists }}</td><td>{{ p.deaths }}</td><td>{{ p.score }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% endfor %}
+    </div>
+    <div class="replay-lists">
+        <section>
+            <h4>{{ t('replay.kill_list') }}</h4>
+            <ol class="replay-kills">
+                {% for k in report.kills %}
+                <li><time>{{ k.timestamp_ms | clock }}</time>
+                    {% if k.killer %}<b>{{ k.killer }}</b> <span class="muted">{{ k.killer_vehicle | vehicle }}</span> → {% endif %}
+                    {% if k.victim %}<b>{{ k.victim }}</b>{% if k.victim_vehicle %} <span class="muted">{{ k.victim_vehicle | vehicle }}</span>{% endif %}{% else %}<span class="muted">{{ t('replay.unknown_victim') }}</span>{% endif %}
+                    {% if not k.killer %}<span class="muted">{{ t('replay.no_killer') }}</span>{% endif %}
+                </li>
+                {% else %}
+                <li class="muted">{{ t('replay.none') }}</li>
+                {% endfor %}
+            </ol>
+        </section>
+        <section>
+            <h4>{{ t('replay.chat') }}</h4>
+            <ol class="replay-chat">
+                {% for line in report.chat %}
+                <li><time>{{ line.timestamp_ms | clock }}</time> <b>{{ line.sender }}</b>: {{ line.text | striptags }}</li>
+                {% else %}
+                <li class="muted">{{ t('replay.none') }}</li>
+                {% endfor %}
+            </ol>
+        </section>
+    </div>
+</dialog>
+{% endif %}
 {% endblock %}
 {% block scripts %}
 <script src="{{ url_for('static', filename='settings.js') }}"></script>

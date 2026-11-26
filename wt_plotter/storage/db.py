@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 import sqlite3
@@ -45,6 +45,64 @@ class EventRecord:
 
 
 @dataclass
+class ReplayRecord:
+    session_id: str
+    is_server: int
+    level: str
+    mission: str
+    battle_class: str
+    started_at: str
+    duration: float
+    status: str | None
+    author: str | None
+    author_user_id: str | None
+    wrote_tracks: int
+    source: str
+    parser_version: int
+    # 完整解析失败的原因（解析成功或只做了轻量导入时为 None）。
+    parse_error: str | None = None
+
+
+@dataclass
+class ReplayPlayer:
+    user_id: str
+    name: str
+    clan_tag: str
+    team: int
+    squad_id: int
+    country: str | None
+    vehicles: str
+    kills: int
+    ground_kills: int
+    naval_kills: int
+    ai_kills: int
+    ai_ground_kills: int
+    ai_naval_kills: int
+    team_kills: int
+    assists: int
+    deaths: int
+    capture_zone: int
+    damage_zone: int
+    score: int
+
+
+@dataclass
+class ReplayKill:
+    timestamp: float
+    killer: str | None
+    killer_vehicle: str
+    victim: str | None
+    victim_vehicle: str | None
+
+
+@dataclass
+class ReplayChat:
+    timestamp: float
+    sender: str
+    text: str
+
+
+@dataclass
 class PositionRecord:
     x: float
     y: float
@@ -54,6 +112,9 @@ class PositionRecord:
     is_poi: int
     x_ground: float | None = None
     y_ground: float | None = None
+    # 录像还原的单位：玩家名与载具（AI 或不知道时为 None）。
+    unit_name: str | None = None
+    unit_vehicle: str | None = None
 
 
 def connect(db_path: Path) -> _Connection:
@@ -113,6 +174,11 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             value TEXT NOT NULL UNIQUE
         );
+
+        CREATE TABLE IF NOT EXISTS enum_unit_names (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            value TEXT NOT NULL UNIQUE
+        );
 \x20\x20\x20\x20\x20\x20\x20\x20
         CREATE TABLE IF NOT EXISTS ticks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -139,6 +205,8 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             is_poi INTEGER NOT NULL DEFAULT 0,
             x_ground REAL,
             y_ground REAL,
+            unit_name_id INTEGER,
+            unit_vehicle_id INTEGER,
             FOREIGN KEY (match_id) REFERENCES matches(id),
             FOREIGN KEY (tick_id) REFERENCES ticks(id),
             FOREIGN KEY (color_id) REFERENCES enum_colors(id),
@@ -156,11 +224,96 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (match_id) REFERENCES matches(id)
         );
 
+        CREATE TABLE IF NOT EXISTS map_bounds (
+            map_key TEXT PRIMARY KEY,
+            min_x REAL NOT NULL,
+            min_z REAL NOT NULL,
+            max_x REAL NOT NULL,
+            max_z REAL NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS replays (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            match_id INTEGER NOT NULL,
+            session_id TEXT NOT NULL,
+            is_server INTEGER NOT NULL,
+            level TEXT NOT NULL,
+            mission TEXT NOT NULL,
+            battle_class TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            duration REAL NOT NULL,
+            status TEXT,
+            author TEXT,
+            author_user_id TEXT,
+            wrote_tracks INTEGER NOT NULL DEFAULT 0,
+            source TEXT NOT NULL,
+            parser_version INTEGER NOT NULL DEFAULT 0,
+            parse_error TEXT,
+            UNIQUE (session_id, is_server),
+            FOREIGN KEY (match_id) REFERENCES matches(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS replay_players (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            replay_id INTEGER NOT NULL,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            clan_tag TEXT NOT NULL,
+            team INTEGER NOT NULL,
+            squad_id INTEGER NOT NULL,
+            country TEXT,
+            vehicles TEXT NOT NULL,
+            kills INTEGER NOT NULL,
+            ground_kills INTEGER NOT NULL,
+            naval_kills INTEGER NOT NULL,
+            ai_kills INTEGER NOT NULL,
+            ai_ground_kills INTEGER NOT NULL,
+            ai_naval_kills INTEGER NOT NULL,
+            team_kills INTEGER NOT NULL,
+            assists INTEGER NOT NULL,
+            deaths INTEGER NOT NULL,
+            capture_zone INTEGER NOT NULL,
+            damage_zone INTEGER NOT NULL,
+            score INTEGER NOT NULL,
+            FOREIGN KEY (replay_id) REFERENCES replays(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS replay_kills (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            replay_id INTEGER NOT NULL,
+            timestamp_ms INTEGER NOT NULL,
+            killer TEXT,
+            killer_vehicle TEXT NOT NULL,
+            victim TEXT,
+            victim_vehicle TEXT,
+            FOREIGN KEY (replay_id) REFERENCES replays(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS replay_chat (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            replay_id INTEGER NOT NULL,
+            timestamp_ms INTEGER NOT NULL,
+            sender TEXT NOT NULL,
+            text TEXT NOT NULL,
+            FOREIGN KEY (replay_id) REFERENCES replays(id)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_events_match_ts ON events(match_id, timestamp_ms);
+        CREATE INDEX IF NOT EXISTS idx_replays_match ON replays(match_id);
         CREATE INDEX IF NOT EXISTS idx_positions_match ON positions(match_id);
         CREATE INDEX IF NOT EXISTS idx_positions_tick ON positions(tick_id);
         CREATE INDEX IF NOT EXISTS idx_ticks_match_ts ON ticks(match_id, timestamp_ms);
     """)
+    # 早期建的表缺少后加的列。
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(replays)")}
+    if "parser_version" not in columns:
+        conn.execute("ALTER TABLE replays ADD COLUMN parser_version INTEGER NOT NULL DEFAULT 0")
+    if "parse_error" not in columns:
+        conn.execute("ALTER TABLE replays ADD COLUMN parse_error TEXT")
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(positions)")}
+    if "unit_name_id" not in columns:
+        conn.execute("ALTER TABLE positions ADD COLUMN unit_name_id INTEGER")
+        conn.execute("ALTER TABLE positions ADD COLUMN unit_vehicle_id INTEGER")
     conn.commit()
 
 
@@ -257,8 +410,11 @@ def add_tick(conn: _Connection, match_id: int, tick: TickRecord, positions: list
         )
         conn.executemany(
             """
-            INSERT INTO positions (match_id, tick_id, x, y, color_id, type_id, icon_id, is_poi, x_ground, y_ground)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO positions (
+                match_id, tick_id, x, y, color_id, type_id, icon_id, is_poi, x_ground, y_ground,
+                unit_name_id, unit_vehicle_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 (
@@ -272,6 +428,9 @@ def add_tick(conn: _Connection, match_id: int, tick: TickRecord, positions: list
                     position.is_poi,
                     _quantize(position.x_ground),
                     _quantize(position.y_ground),
+                    None if position.unit_name is None else _enum_id(conn, pending, "enum_unit_names", position.unit_name),
+                    None if position.unit_vehicle is None
+                    else _enum_id(conn, pending, "enum_vehicle_types", position.unit_vehicle),
                 )
                 for position in positions
             ),
@@ -315,7 +474,7 @@ def get_positions_bundle(conn: sqlite3.Connection, match_id: int, since_ms: int)
         """
         SELECT
             p.id, p.tick_id, p.x, p.y, c.value AS color, t.value AS type, i.value AS icon,
-            p.is_poi, p.x_ground, p.y_ground,
+            p.is_poi, p.x_ground, p.y_ground, un.value AS unit_name, uv.value AS unit_vehicle,
             tk.timestamp_ms AS timestamp, at.value AS army_type, vt.value AS vehicle_type,
             tk.is_player_air, tk.is_player_air_view
         FROM positions p
@@ -325,12 +484,16 @@ def get_positions_bundle(conn: sqlite3.Connection, match_id: int, since_ms: int)
         LEFT JOIN enum_icons i ON i.id = p.icon_id
         LEFT JOIN enum_army_types at ON at.id = tk.army_type_id
         LEFT JOIN enum_vehicle_types vt ON vt.id = tk.vehicle_type_id
+        LEFT JOIN enum_unit_names un ON un.id = p.unit_name_id
+        LEFT JOIN enum_vehicle_types uv ON uv.id = p.unit_vehicle_id
         WHERE p.match_id = ? AND tk.timestamp_ms >= ?
         ORDER BY tk.timestamp_ms, p.id
         """,
         (match_id, since_ms),
     )
-    position_fields = ("id", "tick_id", "x", "y", "color", "type", "icon", "is_poi", "x_ground", "y_ground")
+    position_fields = (
+        "id", "tick_id", "x", "y", "color", "type", "icon", "is_poi", "x_ground", "y_ground", "unit_name", "unit_vehicle",
+    )
     tick_fields = ("timestamp", "army_type", "vehicle_type", "is_player_air", "is_player_air_view")
     positions = []
     ticks = {}
@@ -394,6 +557,21 @@ def has_air_view(conn: sqlite3.Connection, match_id: int) -> bool:
     return row is not None
 
 
+def has_naval_spawn(conn: sqlite3.Connection, match_id: int, spawn_types: tuple[str, ...]) -> bool:
+    """检查比赛是否包含海战出生点，用于未知地图的战局类型兜底。"""
+    marks = ", ".join("?" * len(spawn_types))
+    row = conn.execute(
+        f"""
+        SELECT 1 FROM positions p
+        JOIN enum_types t ON t.id = p.type_id
+        WHERE p.match_id = ? AND t.value IN ({marks})
+        LIMIT 1
+        """,
+        (match_id, *spawn_types),
+    ).fetchone()
+    return row is not None
+
+
 _NUKE_EVENT_SQL = "msg LIKE '%☢%' OR msg LIKE '%核%武%器%' OR LOWER(msg) LIKE '%nuclear%'"
 
 
@@ -433,8 +611,16 @@ def get_latest_tick(conn: sqlite3.Connection, match_id: int) -> TickRecord | Non
     return TickRecord(**dict(row)) if row is not None else None
 
 
+def _delete_replay_rows(conn: sqlite3.Connection, where: str, params: tuple) -> None:
+    ids = f"SELECT id FROM replays WHERE {where}"
+    for table in ("replay_players", "replay_kills", "replay_chat"):
+        conn.execute(f"DELETE FROM {table} WHERE replay_id IN ({ids})", params)
+    conn.execute(f"DELETE FROM replays WHERE {where}", params)
+
+
 def delete_match(conn: sqlite3.Connection, match_id: int) -> None:
     with conn:
+        _delete_replay_rows(conn, "match_id = ?", (match_id,))
         conn.execute("DELETE FROM events WHERE match_id = ?", (match_id,))
         conn.execute("DELETE FROM positions WHERE match_id = ?", (match_id,))
         conn.execute("DELETE FROM ticks WHERE match_id = ?", (match_id,))
@@ -450,3 +636,170 @@ def close_orphaned_matches(conn: sqlite3.Connection) -> int:
             "UPDATE matches SET ended_at = ? WHERE ended_at IS NULL", (datetime.now().isoformat(),)
         )
     return cursor.rowcount
+
+
+def create_finished_match(conn: sqlite3.Connection, started_at: str, ended_at: str, map_hash: str | None) -> int:
+    """为没有 8111 记录的录像建一场已结束的比赛。"""
+    with conn:
+        cursor = conn.execute(
+            "INSERT INTO matches (started_at, ended_at, map_hash) VALUES (?, ?, ?)",
+            (started_at, ended_at, map_hash),
+        )
+    return cursor.lastrowid
+
+
+def extend_match_end(conn: sqlite3.Connection, match_id: int, ended_at: str) -> None:
+    """录像比本地记录更长时（服务器录像含完整战局），把结束时间推后。"""
+    with conn:
+        conn.execute("UPDATE matches SET ended_at = MAX(ended_at, ?) WHERE id = ?", (ended_at, match_id))
+
+
+def find_match_near(conn: sqlite3.Connection, started_at: str, tolerance_s: float, session_id: str) -> int | None:
+    """找开始时间最接近且在容差内的已结束比赛，跳过已关联其它场次录像的比赛。"""
+    row = conn.execute(
+        """
+        SELECT id FROM matches
+        WHERE ended_at IS NOT NULL
+          AND ABS(julianday(started_at) - julianday(?)) * 86400 <= ?
+          AND id NOT IN (SELECT match_id FROM replays WHERE session_id != ?)
+        ORDER BY ABS(julianday(started_at) - julianday(?))
+        LIMIT 1
+        """,
+        (started_at, tolerance_s, session_id, started_at),
+    ).fetchone()
+    return row["id"] if row is not None else None
+
+
+def save_map_bounds(conn: sqlite3.Connection, map_key: str, bounds: tuple[float, float, float, float]) -> None:
+    """记录地图图片对应的世界坐标范围 (min_x, min_z, max_x, max_z)；与图片一样，以第一次为准。"""
+    with conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO map_bounds (map_key, min_x, min_z, max_x, max_z) VALUES (?, ?, ?, ?, ?)",
+            (map_key, *bounds),
+        )
+
+
+def get_map_bounds(conn: sqlite3.Connection, map_key: str) -> tuple[float, float, float, float] | None:
+    row = conn.execute(
+        "SELECT min_x, min_z, max_x, max_z FROM map_bounds WHERE map_key = ?", (map_key,)
+    ).fetchone()
+    return tuple(row) if row is not None else None
+
+
+def find_session_author(conn: sqlite3.Connection, session_id: str) -> str | None:
+    """同一场的本地录像记录了是谁录的。"""
+    row = conn.execute(
+        "SELECT author_user_id FROM replays WHERE session_id = ? AND author_user_id IS NOT NULL LIMIT 1",
+        (session_id,),
+    ).fetchone()
+    return row["author_user_id"] if row is not None else None
+
+
+def tracks_writer(conn: sqlite3.Connection, match_id: int) -> int | None:
+    """本场轨迹由哪类录像写入：1 服务器录像，0 本地录像，None 不是录像写的。"""
+    row = conn.execute(
+        "SELECT MAX(is_server) AS is_server FROM replays WHERE match_id = ? AND wrote_tracks = 1", (match_id,)
+    ).fetchone()
+    return row["is_server"]
+
+
+def clear_match_data(conn: sqlite3.Connection, match_id: int) -> None:
+    """删掉比赛的 tick、位置和播报（录像重新写入轨迹前调用）。"""
+    with conn:
+        conn.execute("DELETE FROM events WHERE match_id = ?", (match_id,))
+        conn.execute("DELETE FROM positions WHERE match_id = ?", (match_id,))
+        conn.execute("DELETE FROM ticks WHERE match_id = ?", (match_id,))
+
+
+def replay_parser_version(conn: sqlite3.Connection, session_id: str, is_server: bool) -> int | None:
+    """已导入录像的解析版本；没导入过返回 None。"""
+    row = conn.execute(
+        "SELECT parser_version FROM replays WHERE session_id = ? AND is_server = ?", (session_id, int(is_server))
+    ).fetchone()
+    return None if row is None else row["parser_version"]
+
+
+def replays_to_parse(conn: sqlite3.Connection, match_id: int, parser_version: int) -> list[str]:
+    """这场比赛里解析版本低于 parser_version 的录像来源，本地录像在前。"""
+    rows = conn.execute(
+        "SELECT source FROM replays WHERE match_id = ? AND parser_version < ? ORDER BY is_server",
+        (match_id, parser_version),
+    ).fetchall()
+    return [row["source"] for row in rows]
+
+
+def mark_replay_failed(conn: sqlite3.Connection, source: str, parser_version: int, error: str) -> None:
+    """记下完整解析失败：同一解析版本不再重试。"""
+    with conn:
+        conn.execute(
+            "UPDATE replays SET parser_version = ?, parse_error = ? WHERE source = ?", (parser_version, error, source)
+        )
+
+
+def find_replay_match(conn: sqlite3.Connection, session_id: str) -> int | None:
+    row = conn.execute("SELECT match_id FROM replays WHERE session_id = ? LIMIT 1", (session_id,)).fetchone()
+    return row["match_id"] if row is not None else None
+
+
+def save_replay(
+    conn: sqlite3.Connection, match_id: int, replay: ReplayRecord,
+    players: list[ReplayPlayer], kills: list[ReplayKill], chat: list[ReplayChat],
+) -> int:
+    """保存录像；同一场同类型的录像重新导入时整体替换。"""
+    with conn:
+        _delete_replay_rows(conn, "session_id = ? AND is_server = ?", (replay.session_id, replay.is_server))
+        fields = list(asdict(replay))
+        cursor = conn.execute(
+            f"INSERT INTO replays (match_id, {', '.join(fields)}) VALUES ({', '.join('?' * (len(fields) + 1))})",
+            (match_id, *asdict(replay).values()),
+        )
+        replay_id = cursor.lastrowid
+        _insert_rows(conn, "replay_players", replay_id, [asdict(player) for player in players])
+        _insert_rows(conn, "replay_kills", replay_id, [_with_ms(asdict(kill)) for kill in kills])
+        _insert_rows(conn, "replay_chat", replay_id, [_with_ms(asdict(line)) for line in chat])
+    return replay_id
+
+
+def _with_ms(row: dict) -> dict:
+    row["timestamp_ms"] = round(row.pop("timestamp") * 1000)
+    return row
+
+
+def _insert_rows(conn: sqlite3.Connection, table: str, replay_id: int, rows: list[dict]) -> None:
+    if not rows:
+        return
+    fields = list(rows[0])
+    conn.executemany(
+        f"INSERT INTO {table} (replay_id, {', '.join(fields)}) VALUES ({', '.join('?' * (len(fields) + 1))})",
+        ((replay_id, *row.values()) for row in rows),
+    )
+
+
+def get_replay_report(conn: sqlite3.Connection, match_id: int) -> dict | None:
+    """本场录像战报；服务器录像信息完整，优先使用。"""
+    replay = conn.execute(
+        "SELECT * FROM replays WHERE match_id = ? ORDER BY is_server DESC, id DESC LIMIT 1", (match_id,)
+    ).fetchone()
+    if replay is None:
+        return None
+
+    def rows(table, order):
+        query = f"SELECT * FROM {table} WHERE replay_id = ? ORDER BY {order}"
+        return [dict(row) for row in conn.execute(query, (replay["id"],))]
+
+    errors = conn.execute(
+        "SELECT source, parse_error FROM replays WHERE match_id = ? AND parse_error IS NOT NULL", (match_id,)
+    ).fetchall()
+    return {
+        "replay": dict(replay),
+        "errors": [dict(row) for row in errors],
+        "players": rows("replay_players", "team, score DESC"),
+        "kills": rows("replay_kills", "timestamp_ms, id"),
+        "chat": rows("replay_chat", "timestamp_ms, id"),
+    }
+
+
+def get_replay_levels(conn: sqlite3.Connection) -> dict[int, tuple[str, str]]:
+    """有录像的比赛 -> (关卡, 战斗类别)。"""
+    rows = conn.execute("SELECT match_id, level, battle_class FROM replays")
+    return {row["match_id"]: (row["level"], row["battle_class"]) for row in rows}

@@ -99,3 +99,24 @@ def test_watch_warns_when_running_instance_is_not_capturing(running_server, monk
     assert "not capturing" in caplog.text
     capturer.assert_not_called()
     cli_module.webbrowser.open.assert_called_once()
+
+
+def test_import_replay_command(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(cli_module, "PATHS", replace(cli_module.PATHS, db_path=tmp_path / "m.db"))
+    monkeypatch.setattr(cli_module.importer, "load_path", lambda path: path.name)
+    monkeypatch.setattr(cli_module.importer, "import_replay", lambda conn, replay, source, lang: calls.append(replay) or 7)
+    (tmp_path / "a.wrpl").write_bytes(b"")
+    result = CliRunner().invoke(cli, ["import-replay", str(tmp_path / "a.wrpl")])
+    assert result.exit_code == 0, result.output
+    assert calls == ["a.wrpl"] and "match 7" in result.output
+
+
+def test_download_replay_command(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli_module, "PATHS", replace(cli_module.PATHS, db_path=tmp_path / "m.db", replays_dir=tmp_path))
+    monkeypatch.setattr(cli_module.download, "download_server_replay", lambda session, target: target / session)
+    monkeypatch.setattr(cli_module.importer, "load_path", lambda path: path)
+    monkeypatch.setattr(cli_module.importer, "import_replay", lambda conn, replay, source, lang: 3)
+    result = CliRunner().invoke(cli, ["download-replay", "72C412C1002817AE"])
+    assert result.exit_code == 0, result.output
+    assert "72c412c1002817ae -> match 3" in result.output

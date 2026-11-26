@@ -19,8 +19,12 @@ erDiagram
     matches ||--o{ events : logs
 ```
 
+## Replay tables
+
+`replays` holds one row per imported replay, unique by session id and server flag, and references its match. `replay_players`, `replay_kills` and `replay_chat` store player results, the player kill log and chat; times are milliseconds from the replay start. Re-importing a replay replaces its rows, and deleting a match removes them. `replays.wrote_tracks` marks whether that replay wrote the match's tracks; `replays.parser_version` records the full-parse version: folder imports read only the summary and store 0, and opening a match fully parses replays below the current version. A failed full parse stores the current version and the reason in `replays.parse_error`. `map_bounds` stores each minimap's world bounds under the same key as the map image. See [Game replays](replay.md).
+
 ## Reads and cleanup
 
-`GET /api/match/<id>/positions` returns `ticks` and `positions`. Integer `since` values are milliseconds and decimal values are seconds. The filter includes the given timestamp. The viewer joins the returned arrays and uses mapped ground coordinates when available. `GET /api/match/<id>/events?since=<ms>` returns feed messages in time order. It localizes departure messages and returns one departure per player at each timestamp.
+`GET /api/match/<id>/positions` returns `ticks` and `positions`. Integer `since` values are milliseconds and decimal values are seconds. The filter includes the given timestamp. The viewer joins the returned arrays and uses mapped ground coordinates when available. Positions written from replays also carry `unit_name` and `unit_vehicle` (player name and vehicle, stored as `positions.unit_name_id` → `enum_unit_names` and `positions.unit_vehicle_id` → `enum_vehicle_types`); they are null for 8111 recordings. `GET /api/match/<id>/events?since=<ms>` returns feed messages in time order. It localizes departure messages and returns one departure per player at each timestamp.
 
 The app uses WAL and a database connection per capture thread or web request. Deleting a finished match removes its feed messages, positions, ticks, and match row in one transaction, then requests incremental vacuum. Existing databases retain their SQLite auto-vacuum mode. At capture startup, matches left active by an interrupted run are marked ended.

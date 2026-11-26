@@ -7,10 +7,11 @@ from threading import Thread
 from flask import Flask, g, jsonify, render_template, request, send_from_directory
 
 from wt_plotter.capture.capturer import Capturer
-from wt_plotter.config import APP_SETTINGS, CAPTURE_DEFAULTS
+from wt_plotter.config import APP_SETTINGS, CAPTURE_DEFAULTS, CAPTURE_FILTERS, PATHS
 from wt_plotter.i18n import LANGUAGES, get_language, language_names, load_catalog, set_language, translate
-from wt_plotter.maps.lookup import lookup_map
-from wt_plotter.maps.table import BattleType
+from wt_plotter.maps.lookup import image_key, is_ground_battle, level_map_id, lookup_map
+from wt_plotter.maps.table import BattleType, UNKNOWN_MAP
+from wt_plotter.replay import download, importer
 from wt_plotter.storage import db
 
 
@@ -78,8 +79,22 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
         army = db.first_sortie_army(connection(), match.id, CAPTURE_DEFAULTS.placeholder_vehicles)
         return army == CAPTURE_DEFAULTS.air_army_type
 
-    def match_summary(match, nuke_ids=None):
+    def match_summary(match, nuke_ids=None, replay_levels=None):
         info = map_metadata(match.map_hash)
+        if info["battle_type"] == BattleType.UNKNOWN.value and db.has_naval_spawn(
+            connection(), match.id, CAPTURE_FILTERS.naval_spawn_types
+        ):
+            info["battle_type"] = BattleType.NAVAL.value
+        levels = db.get_replay_levels(connection()) if replay_levels is None else replay_levels
+        if match.id in levels:
+            # 没有截图哈希的录像比赛，用录像记录的关卡补上地图名和战斗类型。
+            level, battle_class = levels[match.id]
+            map_id = level_map_id(level, battle_class)
+            if info["map_id"] == UNKNOWN_MAP.map_id and map_id:
+                info.update(map_id=map_id, map_name=t(f"map.{map_id}"))
+            if info["battle_type"] == BattleType.UNKNOWN.value:
+                ground = is_ground_battle(battle_class)
+                info["battle_type"] = (BattleType.GROUND if ground else BattleType.AIR).value
         nuke = bool(match.nuke_detected) or (
             match.id in nuke_ids if nuke_ids is not None else db.has_nuke_event(connection(), match.id)
         )
@@ -94,14 +109,15 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
     def map_label(info, mode):
         return f"{BATTLE_ICONS[mode]} {info['map_name']}".strip()
 
-    def match_page_data(match, nuke_ids=None):
-        payload = match_summary(match, nuke_ids)
+    def match_page_data(match, nuke_ids=None, replay_levels=None):
+        payload = match_summary(match, nuke_ids, replay_levels)
         air_map = map_metadata(match.air_map_hash) if match.air_map_hash else None
         has_air_view = bool(air_map) or db.has_air_view(connection(), match.id)
         return {
             **payload,
             "air_map": air_map,
             "has_air_view": has_air_view,
+            "replay_tracks": db.tracks_writer(connection(), match.id) is not None,
             "default_map": "air" if air_map and payload["mode"] == BattleType.AIR.value else "ground",
             "mode_label": t(f"battle_type.{payload['mode']}"),
             "map_title": map_label(payload, payload["mode"]),
@@ -109,10 +125,20 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
             "air_map_label": t("match.air_map", name=map_label(air_map, air_map["battle_type"])) if air_map else "",
         }
 
+    @app.template_filter("vehicle")
+    def vehicle_filter(raw):
+        return format_vehicle_name(raw)
+
+    @app.template_filter("clock")
+    def clock_filter(ms):
+        seconds = ms // 1000
+        return f"{seconds // 60}:{seconds % 60:02d}"
+
     def render_match(match, is_live):
         return render_template(
             "match.html", match=match_page_data(match), is_live=is_live,
             placeholder_vehicles=CAPTURE_DEFAULTS.placeholder_vehicles,
+            report=db.get_replay_report(connection(), match.id),
         )
 
     @app.get("/")
@@ -124,6 +150,7 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
         selected_mode = request.args.get("mode", "")
         allowed_modes = HISTORY_MODES.get(selected_mode, ())
         vehicles_by_match = db.get_match_vehicles(conn, CAPTURE_DEFAULTS.placeholder_vehicles)
+        replay_levels = db.get_replay_levels(conn)
         nuke_ids = db.get_nuke_event_match_ids(conn)
         matches_by_date = {}
         for match in db.get_all_matches(conn):
@@ -132,7 +159,7 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
             if selected_date and day != selected_date:
                 continue
 
-            info = match_page_data(match, nuke_ids)
+            info = match_page_data(match, nuke_ids, replay_levels)
             if allowed_modes and info["mode"] not in allowed_modes:
                 continue
             if map_search:
@@ -151,6 +178,7 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
                 "position_count": db.count_positions(conn, match.id),
                 "vehicles": [format_vehicle_name(v) for v in vehicles_by_match.get(match.id, ())],
                 "has_map_image": bool(map_hash),
+                "has_replay": match.id in replay_levels,
             })
         return render_template(
             "index.html", matches_by_date=matches_by_date, selected_date=selected_date,
@@ -164,7 +192,9 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
         match = db.get_match(connection(), match_id)
         if match is None:
             return t("match.not_found"), 404
-        return render_match(match, match.ended_at is None)
+        # 文件夹导入只读了录像摘要，第一次打开时完整解析（击杀、聊天、轨迹）。
+        importer.ensure_parsed(connection(), match_id, g.lang)
+        return render_match(db.get_match(connection(), match_id), match.ended_at is None)
 
     @app.get("/live")
     def live_view():
@@ -229,6 +259,34 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
             events.append(event)
         return jsonify(events)
 
+    @app.get("/api/match/<int:match_id>/replay")
+    def api_replay(match_id):
+        report = db.get_replay_report(connection(), match_id)
+        if report is None:
+            return jsonify(error="replay_not_found"), 404
+        return jsonify(report)
+
+    @app.post("/api/replays/import")
+    def api_import_replays():
+        folder = Path(request.get_json()["path"])
+        if not folder.is_dir():
+            return jsonify(error="replay_folder_not_found"), 400
+        match_ids, errors = importer.import_new(connection(), [folder])
+        return jsonify(imported=len(match_ids), errors=errors)
+
+    @app.post("/api/replays/download")
+    def api_download_replay():
+        try:
+            session = download.parse_session(request.get_json()["session"])
+        except ValueError:
+            return jsonify(error="bad_session"), 400
+        try:
+            folder = download.download_server_replay(session, PATHS.replays_dir)
+        except FileNotFoundError:
+            return jsonify(error="server_replay_not_found"), 404
+        match_id = importer.import_replay(connection(), importer.load_path(folder), str(folder), g.lang)
+        return jsonify(match_id=match_id)
+
     @app.get("/api/match/<int:match_id>/map.png")
     def api_map_image(match_id):
         match = db.get_match(connection(), match_id)
@@ -237,9 +295,7 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
         map_hash = match.air_map_hash if request.args.get("kind") == "air" else match.map_hash
         if not map_hash:
             return "", 404
-        map_id = lookup_map(map_hash).map_id
-        key = map_hash if map_id in ("unknown", "no_map") else map_id
-        return send_from_directory(maps_dir, f"{key}.png", mimetype="image/png")
+        return send_from_directory(maps_dir, f"{image_key(map_hash)}.png", mimetype="image/png")
 
     @app.get("/api/active")
     def api_active():

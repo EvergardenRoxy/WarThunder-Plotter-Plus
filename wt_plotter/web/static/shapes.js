@@ -1,5 +1,5 @@
 // 通用几何形状：只建立路径，填充和描边由调用方决定。
-// size 是外接正方形边长，angle 为弧度（0 指向 +x，仅箭头使用）。
+// size 是外接正方形边长，angle 为弧度（0 指向 +x，用于箭头与舰船）。
 
 // 以 (x, y) 为中心、按 angle 旋转后连成闭合多边形。
 function polygon(ctx, vertices, x, y, angle) {
@@ -49,6 +49,9 @@ function path(ctx, shape, x, y, size, angle = 0) {
             break;
         case 'arrow':
             polygon(ctx, [[h, 0], [-h, h * 0.8], [-h * 0.4, 0], [-h, -h * 0.8]], x, y, angle);
+            break;
+        case 'ship':
+            polygon(ctx, [[h, 0], [h * 0.2, h * 0.55], [-h, h * 0.55], [-h, -h * 0.55], [h * 0.2, -h * 0.55]], x, y, angle);
             break;
         default:
             throw new Error(`Unknown shape: ${shape}`);

@@ -58,6 +58,7 @@ The web UI listens on `http://127.0.0.1:5000` by default (configurable via `--ho
 - **[Sortie timeline & air map switch](docs/en/viewer.md#ground-map-and-air-map)** — Clickable sortie pills below the playbar jump straight to each actual vehicle spawn (ignoring spawn-screen clicks). Combined-arms matches support toggling between **Ground** and **Air** maps.
 - **[Filterable battle feed](docs/en/viewer.md#battle-feed)** — Records `/hudmsg` combat, award, nuke, and departure messages with `All / Combat / Awards / Hide leaves` filters, color-coded timeline ticks, and click-to-seek synchronization.
 - **[Rich match history](docs/en/viewer.md#match-history)** — Grouped by local start date with map thumbnails, spawned sortie vehicle chips, nuke badges, aligned Start/Duration columns, and combined map/date/mode filtering.
+- **[Game replay import](docs/en/replay.md)** — Imports local `.wrpl` replays and downloads server replays by session id, adding a per-match report with every player's team, score, kills and vehicles, the player kill log, and chat. Replays also rebuild aircraft tracks (air battles) or ground unit and aircraft tracks (ground battles), so matches without an 8111 recording can be played back, with player names and vehicles on hover.
 - **Bilingual UI** — Switch between English and Simplified Chinese in the top bar (defaults to your Windows display language on first launch).
 
 ---
@@ -114,6 +115,7 @@ flowchart LR
 | :--- | :--- |
 | [Capture & map recognition](docs/en/capture.md) | Telemetry polling, map dHash lookup, air-to-ground transform |
 | [Match viewer](docs/en/viewer.md) | Map legend, replay controls, live rewind, battle feed |
+| [Game replays](docs/en/replay.md) | Import local and server replays, replay report, file format |
 | [Data, settings & updates](docs/en/data.md) | Storage layout, browser settings, portable auto-updater |
 | [Architecture](docs/en/architecture.md) | Module design and source file index |
 | [Database](docs/en/database.md) | SQLite schema and enum tables |

@@ -23,7 +23,8 @@ def test_schema_matches_upstream(conn):
     tables = conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
     assert {row["name"] for row in tables} - {"sqlite_sequence"} == {
         "matches", "ticks", "positions", "enum_colors", "enum_types",
-        "enum_icons", "enum_army_types", "enum_vehicle_types", "events",
+        "enum_icons", "enum_army_types", "enum_vehicle_types", "enum_unit_names", "events",
+        "replays", "replay_players", "replay_kills", "replay_chat", "map_bounds",
     }
     columns = conn.execute("PRAGMA table_info(matches)").fetchall()
     assert [row["name"] for row in columns] == [
@@ -43,15 +44,18 @@ def test_match_lifecycle(conn):
 
 def test_add_tick_and_bundle(conn):
     match_id = db.start_match(conn, "hash")
-    mapped = db.PositionRecord(0.2, 0.3, "#174DFF", "ground_model", "Tank", 0, 0.4, 0.5)
+    mapped = db.PositionRecord(0.2, 0.3, "#174DFF", "ground_model", "Tank", 0, 0.4, 0.5, "Alice", "us_m4a1")
     db.add_tick(conn, match_id, TICK, [POSITION, mapped])
     bundle = db.get_positions_bundle(conn, match_id, 0)
     assert bundle["ticks"][0]["timestamp"] == 1500
     assert len(bundle["positions"]) == 2
     assert set(bundle["positions"][0]) == {
         "id", "tick_id", "x", "y", "color", "type", "icon", "is_poi", "x_ground", "y_ground",
+        "unit_name", "unit_vehicle",
     }
+    assert (bundle["positions"][0]["unit_name"], bundle["positions"][0]["unit_vehicle"]) == (None, None)
     assert bundle["positions"][1]["x_ground"] == 0.4
+    assert (bundle["positions"][1]["unit_name"], bundle["positions"][1]["unit_vehicle"]) == ("Alice", "us_m4a1")
     assert db.get_latest_tick(conn, match_id) == db.TickRecord(1500, "tank", "tank_test", 0, 0)
 
 

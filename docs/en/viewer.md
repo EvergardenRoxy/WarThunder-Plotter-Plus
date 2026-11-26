@@ -9,13 +9,13 @@ Matches in the navigation bar lists every recorded match; click one to open its 
 ## Reading the map
 
 - **Color is the team**: yellow is you, green is your squad, blue is allies, red is enemies, gray is everything else.
-- **Shape is the unit class**: diamond for light tanks, circle for medium tanks, square for heavy tanks, triangle for tank destroyers, crossed circle for SPAA, pentagon for wheeled vehicles and IFVs, arrow for aircraft (fighters, attackers and bombers in growing size). You are a dot with a white ring. The sidebar has a legend.
-- **Lines are trails**: drawn back from the current position and fading with age. Arrows point along the last piece of the trail.
+- **Shape is the unit class**: diamond for light tanks, circle for medium tanks, square for heavy tanks, triangle for tank destroyers, crossed circle for SPAA, pentagon for wheeled vehicles and IFVs, hull for ships (growing by class), arrow for aircraft (fighters, attackers and bombers in growing size). You are a dot with a white ring. The sidebar has a legend.
+- **Lines are trails**: drawn back from the current position and fading with age. Arrows and ships point along the last piece of the trail.
 - **× marks a crew knock-out.** The viewer uses interrupted trails to place these marks for you, your squad and allies.
 - **Large circles are capture zones**, colored by current owner (blue, red, or white for neutral). **Small squares are respawns.**
 - Hover over a unit to see its class. Hovering over yourself also shows your vehicle model.
 
-Artillery, pillboxes, ships and fixed air defence are not shown yet.
+Artillery, pillboxes and fixed air defence are not shown yet.
 
 Enemy units are on the minimap only while spotted. One that reappears within 6 seconds rejoins its old trail, with no line drawn across the gap. An enemy that disappears is not necessarily dead, so enemies get no ×.
 
@@ -43,6 +43,8 @@ These settings and the playback speed are saved in the browser and are still the
 Map display controls stay at the top of the sidebar. Choose **You and squad** for a focused view. Expand **Advanced display** to adjust line width and marker size or see the unit legend and statistics.
 
 In live view and replay, **Show all teammate death locations** keeps squad and allied crew knockout markers on the selected map after their trails fade. The squad and ally filters still apply. Hover over a × marker to see the unit type. The **My vehicle** label beside the map title shows your vehicle at the current timeline position.
+
+In matches rebuilt from replays, units carry the player name and vehicle when known: hovering over a unit shows them in the tooltip. AI units have no name.
 
 ## Ground map and air map
 

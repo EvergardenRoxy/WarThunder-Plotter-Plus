@@ -34,6 +34,16 @@ const VIEW_STYLE = Object.freeze({
         Fighter: { shape: 'arrow', scale: 1 },
         Assault: { shape: 'arrow', scale: 1.15 },
         Bomber: { shape: 'arrow', scale: 1.3 },
+        Boat: { shape: 'ship', scale: 0.85 },
+        HeavyBoat: { shape: 'ship', scale: 0.95 },
+        Barge: { shape: 'ship', scale: 0.95 },
+        Frigate: { shape: 'ship', scale: 1 },
+        Destroyer: { shape: 'ship', scale: 1.05 },
+        MissileDestroyer: { shape: 'ship', scale: 1.1 },
+        LightCruiser: { shape: 'ship', scale: 1.2 },
+        HeavyCruiser: { shape: 'ship', scale: 1.3 },
+        Battlecruiser: { shape: 'ship', scale: 1.4 },
+        Battleship: { shape: 'ship', scale: 1.5 },
     },
     hoverSlop: 4,
     deathScale: 0.8,
@@ -62,14 +72,16 @@ const nearestSpeed = value => VIEW_STYLE.speedOptions.reduce((best, speed) =>
 
 class MatchViewer {
     constructor(canvasId, matchId, {
-        isLive = false, battleType = 'ground', mapKind = 'ground', pollInterval = 500, placeholderVehicles = [],
-        onRender, onPlayStateChange, onEvents, onMapUpdate, onFollowPlayerChange,
+        isLive = false, battleType = 'ground', mapKind = 'ground', replayTracks = false, pollInterval = 500,
+        placeholderVehicles = [], onRender, onPlayStateChange, onEvents, onMapUpdate, onFollowPlayerChange,
     } = {}) {
         this.canvas = document.getElementById(canvasId);
         this.ctx = this.canvas.getContext('2d');
         this.matchId = matchId;
         this.isLive = isLive;
         this.battleType = battleType;
+        // 轨迹由录像还原：陆战里的飞机坐标与地面单位同一套，可以画。
+        this.replayTracks = replayTracks;
         this.mapKind = mapKind;
         this.mapKindSelected = false;
         this.pollInterval = pollInterval;
@@ -239,7 +251,7 @@ class MatchViewer {
         return [(this.viewWidth - this.width) / 2, (this.viewHeight - this.height) / 2];
     }
 
-    // 兵种名；已知具体型号（只有自己）、阵亡时间或占领点时附带状态信息。
+    // 兵种名；已知玩家名（录像）、具体型号、阵亡时间或占领点时附带状态信息。
     _markerLabel(marker) {
         if (marker.kind === 'capture_zone') {
             return t('viewer.capture_zone_tooltip', {
@@ -247,8 +259,9 @@ class MatchViewer {
                 time: this.formatTime(marker.timestamp),
             });
         }
-        const name = t(`unit.${marker.icon}`);
-        const base = marker.vehicle ? `${name} · ${this._vehicleName(marker.vehicle)}` : name;
+        const unit = t(`unit.${marker.icon}`);
+        const kind = marker.vehicle ? `${unit} · ${this._vehicleName(marker.vehicle)}` : unit;
+        const base = marker.name ? `${marker.name} · ${kind}` : kind;
         if (marker.deathTime !== undefined) {
             return t('viewer.marker_knocked_out', { unit: base, time: this.formatTime(marker.deathTime) });
         }
@@ -327,8 +340,9 @@ class MatchViewer {
     }
 
     _applyMapMetadata(match) {
-        const battleTypeChanged = this.battleType !== match.battle_type;
+        const battleTypeChanged = this.battleType !== match.battle_type || this.replayTracks !== match.replay_tracks;
         this.battleType = match.battle_type;
+        this.replayTracks = match.replay_tracks;
         if (this.isAtLatest && !this.mapKindSelected && this.mapKind !== match.default_map) {
             this.setMapKind(match.default_map, false);
         } else if (battleTypeChanged) {
@@ -376,7 +390,7 @@ class MatchViewer {
                         this.positionCount++;
                         if (pos.icon === VIEW_STYLE.playerIcon) this.playerTickIds.add(pos.tick_id);
                     }
-                    // 不显示的单位（火炮、碉堡、舰船等）直接丢弃。
+                    // 不显示的单位（火炮、碉堡、防空炮等）直接丢弃。
                     if (!pos.is_poi && !this._isShownUnit(pos)) continue;
 
                     const merged = {
@@ -498,7 +512,8 @@ class MatchViewer {
         const mode = document.createElement('span');
         mode.className = armyType === 'air' ? 'army-status air-info' : 'army-status';
         const airLabel = this.mapKind === 'air' ? t('viewer.air_view_raw') : t('viewer.air_view');
-        mode.textContent = armyType === 'air' ? airLabel : t('viewer.ground');
+        const surfaceLabel = this.battleType === 'naval' ? t('viewer.naval') : t('viewer.ground');
+        mode.textContent = armyType === 'air' ? airLabel : surfaceLabel;
         const counts = t('viewer.stats', { positions: this.positionCount, pois: this.poiCount });
         statsEl.replaceChildren(counts, document.createElement('br'), mode);
         const vehicle = document.getElementById('own-vehicle-name');
@@ -545,10 +560,11 @@ class MatchViewer {
     }
 
     _isDrawable(pos) {
-        // 空战图只画空中视角的原始坐标；纯空战图全部可画。
+        // 空战图只画空中视角的原始坐标；纯空战图全部可画；海战水面图和录像还原的轨迹保留飞机。
         if (this.mapKind === 'air') return Boolean(pos.is_player_air_view);
         if (this.battleType === 'air') return true;
-        return pos.type.toLowerCase() !== 'aircraft' && (!pos.is_player_air_view || pos.x_ground != null);
+        const allowAircraft = this.battleType === 'naval' || this.replayTracks;
+        return (allowAircraft || pos.type.toLowerCase() !== 'aircraft') && (!pos.is_player_air_view || pos.x_ground != null);
     }
 
     // 返回当前底图上的显示坐标，越界返回 null。
@@ -568,8 +584,9 @@ class MatchViewer {
             if (!grouped.has(category)) grouped.set(category, new Map());
             const times = grouped.get(category);
             if (!times.has(pos.timestamp)) times.set(pos.timestamp, []);
-            const vehicle = pos.icon === VIEW_STYLE.playerIcon ? pos.vehicle_type : '';
-            times.get(pos.timestamp).push({ ...point, icon: pos.icon, vehicle });
+            // 录像单位自带玩家名与载具；8111 只知道自己的载具。
+            const vehicle = pos.unit_vehicle ?? (pos.icon === VIEW_STYLE.playerIcon ? pos.vehicle_type : '');
+            times.get(pos.timestamp).push({ ...point, icon: pos.icon, vehicle, name: pos.unit_name ?? '' });
         }
         this.visiblePois = [];
         for (const pos of this.pois) {
@@ -838,7 +855,7 @@ class MatchViewer {
     _registerMarker(point, x, y, radius, extra = {}) {
         this.markers.push({
             sx: x * this.zoom + this.panX, sy: y * this.zoom + this.panY, r: radius * this.zoom,
-            icon: point.icon, vehicle: point.vehicle, ...extra,
+            icon: point.icon, vehicle: point.vehicle, name: point.name, ...extra,
         });
     }
 

@@ -24,7 +24,7 @@ const bounds = points => {
 
 test('shapes fit the requested size', () => {
     const { Shapes } = load('shapes.js').window;
-    for (const shape of ['circle', 'square', 'diamond', 'triangle', 'pentagon', 'circle-cross', 'arrow']) {
+    for (const shape of ['circle', 'square', 'diamond', 'triangle', 'pentagon', 'circle-cross', 'arrow', 'ship']) {
         const ctx = recorder();
         Shapes.path(ctx, shape, 10, 10, 4);
         const [x0, y0, x1, y1] = bounds(ctx.points);
@@ -35,13 +35,15 @@ test('shapes fit the requested size', () => {
     assert.deepEqual(bounds(ctx.points), [8, 8, 12, 12]);
 });
 
-test('arrow points along the given angle', () => {
+test('arrow and ship point along the given angle', () => {
     const { Shapes } = load('shapes.js').window;
-    const tip = angle => {
+    const tip = (shape, angle) => {
         const ctx = recorder();
-        Shapes.path(ctx, 'arrow', 0, 0, 10, angle);
+        Shapes.path(ctx, shape, 0, 0, 10, angle);
         return ctx.points[0].map(v => Math.round(v * 1000) / 1000);
     };
-    assert.deepEqual(tip(0), [5, 0]);
-    assert.deepEqual(tip(Math.PI / 2), [0, 5]);
+    for (const shape of ['arrow', 'ship']) {
+        assert.deepEqual(tip(shape, 0), [5, 0], shape);
+        assert.deepEqual(tip(shape, Math.PI / 2), [0, 5], shape);
+    }
 });

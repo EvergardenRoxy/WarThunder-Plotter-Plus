@@ -41,7 +41,8 @@ flowchart LR
 | `wt_plotter/maps/dhash.py` | Map image dHash computation and Hamming distance |
 | `wt_plotter/maps/lookup.py` | Exact/fuzzy dHash lookup for map ID and battle mode |
 | `wt_plotter/maps/table.py` | Built-in map hash and metadata lookup table |
-| `wt_plotter/storage/db.py` | SQLite schema (`matches` / `ticks` / `positions` / `events` + enum tables) and queries |
+| `wt_plotter/storage/db.py` | SQLite schema (`matches` / `ticks` / `positions` / `events`, replay tables + enum tables) and queries |
+| `wt_plotter/replay/` | Game replays: `wrpl.py` file and packet stream, `blk.py` binary BLK, `messages.py` kills and player slots, `tracks.py` shared track helpers, `aircraft.py` aircraft tracks, `ground.py` ground unit tracks, `positions.py` tracks to ticks and positions, `importer.py` storage, `download.py` server replay download |
 | `wt_plotter/web/app.py` | Flask page routes and JSON APIs (matches, positions, events, status, language, shutdown) |
 | `wt_plotter/web/templates/` | Jinja HTML templates (`base` / `index` / `match` / `waiting`) |
 | `wt_plotter/web/static/viewer.js` | Main canvas viewer (live/replay, trail fade, air map switch, death markers) |

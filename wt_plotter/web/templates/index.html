@@ -20,6 +20,22 @@
     <button class="btn btn-primary" type="submit">{{ t('index.filter_date') }}</button>
     {% if selected_date or map_query or selected_mode %}<a class="btn btn-secondary" href="{{ url_for('index') }}">{{ t('index.clear_filters') }}</a>{% endif %}
 </form>
+<details class="replay-import">
+    <summary>{{ t('replay.import_title') }}</summary>
+    <form id="replay-folder-form" class="match-filters">
+        <label for="replay-folder">{{ t('replay.folder') }}
+            <input type="text" id="replay-folder" name="path" placeholder="D:\WarThunder\Replays" required>
+        </label>
+        <button class="btn btn-primary" type="submit">{{ t('replay.import_folder') }}</button>
+    </form>
+    <form id="replay-session-form" class="match-filters">
+        <label for="replay-session">{{ t('replay.session') }}
+            <input type="text" id="replay-session" name="session" required>
+        </label>
+        <button class="btn btn-primary" type="submit">{{ t('replay.download') }}</button>
+    </form>
+    <p id="replay-import-status" class="replay-import-status" role="status"></p>
+</details>
 {% for day, matches in matches_by_date.items() %}
 <section class="match-day">
 <div class="match-day-head">
@@ -41,6 +57,9 @@
                     <span class="match-number">{{ t('index.match_number', id=match.id) }}</span>
                     <span class="match-map">{{ match.map_name }}</span>
                     <span class="match-kind">{{ match.mode_label }}</span>
+                    {% if match.has_replay %}
+                    <span class="badge replay">{{ t('replay.badge') }}</span>
+                    {% endif %}
                     {% if match.nuke_detected %}
                     <span class="badge nuke">☢ {{ t('match.nuke') }}</span>
                     {% endif %}

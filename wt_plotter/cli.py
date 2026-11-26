@@ -16,7 +16,10 @@ from wt_plotter.capture.capturer import Capturer
 from wt_plotter.capture.client import TelemetryClient
 from wt_plotter.config import APP_SETTINGS, PATHS
 from wt_plotter.desktop import tray, updater
+from wt_plotter.i18n import get_language
 from wt_plotter.process_lock import LockHeld, hold_lock
+from wt_plotter.replay import download, importer
+from wt_plotter.storage import db
 from wt_plotter.web.app import create_app
 
 
@@ -121,6 +124,32 @@ def capture() -> None:
                 time.sleep(0.2)
         finally:
             capturer.stop()
+
+
+@cli.command("import-replay")
+@click.argument("paths", nargs=-1, required=True, type=click.Path(exists=True, path_type=Path))
+def import_replay(paths: tuple[Path, ...]) -> None:
+    """Import .wrpl replays (files, folders, or server replay part folders)."""
+    conn = db.connect(PATHS.db_path)
+    try:
+        for source in importer.replay_sources(list(paths)):
+            match_id = importer.import_replay(conn, importer.load_path(source), str(source), get_language(PATHS.settings_path))
+            click.echo(f"{source} -> match {match_id}")
+    finally:
+        conn.close()
+
+
+@cli.command("download-replay")
+@click.argument("session")
+def download_replay(session: str) -> None:
+    """Download a server replay by session id or link and import it."""
+    folder = download.download_server_replay(download.parse_session(session), PATHS.replays_dir)
+    conn = db.connect(PATHS.db_path)
+    try:
+        match_id = importer.import_replay(conn, importer.load_path(folder), str(folder), get_language(PATHS.settings_path))
+    finally:
+        conn.close()
+    click.echo(f"{folder} -> match {match_id}")
 
 
 def _log_thread_failure(args: threading.ExceptHookArgs) -> None:

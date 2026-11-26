@@ -29,6 +29,7 @@ class PathSettings:
     settings_path: Path = DATA_DIR / "settings.json"
     log_path: Path = DATA_DIR / "wt_plotter.log"
     capture_lock: Path = DATA_DIR / "capture.lock"
+    replays_dir: Path = DATA_DIR / "replays"
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,20 @@ class CaptureEndpoints:
 
 
 @dataclass(frozen=True)
+class ReplaySettings:
+    """服务器录像下载。"""
+
+    # 分段地址：{session} 为 16 位十六进制场次号，{part} 为分段号。
+    part_url: str = "https://wt-replays-cdnnow.cdn.gaijin.net/{session}/{part:04d}.wrpl"
+    timeout: float = 60.0
+    # 录像开始时间与 8111 比赛开始时间相差在此秒数内视为同一场。
+    match_start_tolerance: float = 120.0
+    # 地面单位轨迹重采样的帧间隔（秒）；相邻采样超过这么久的空档不插值。
+    ground_frame_interval: float = 1.0
+    ground_max_gap: float = 15.0
+
+
+@dataclass(frozen=True)
 class CaptureDefaults:
     """采集默认值。"""
 
@@ -96,12 +111,18 @@ class CaptureFilters:
         "respawn_base_fighter",
     )
     capture_zone_type: str = "capture_zone"
+    respawn_prefix: str = "respawn_base_"
+    naval_spawn_types: Tuple[str, ...] = ("respawn_base_ship", "respawn_base_destroyer")
     poi_types: Tuple[str, ...] = (
         "capture_zone",
         "respawn_base_tank",
         "respawn_base_fighter",
         "airfield",
     )
+
+    def is_poi(self, obj_type: str) -> bool:
+        """判断地图对象是否属于静态/占领点标记（含各类海陆空重生点）。"""
+        return obj_type in self.poi_types or obj_type.startswith(self.respawn_prefix)
 
 
 @dataclass(frozen=True)
@@ -168,6 +189,7 @@ class DbSettings:
 PATHS = PathSettings()
 APP_SETTINGS = AppSettings()
 CAPTURE_ENDPOINTS = CaptureEndpoints()
+REPLAY_SETTINGS = ReplaySettings()
 CAPTURE_DEFAULTS = CaptureDefaults()
 CAPTURE_FILTERS = CaptureFilters()
 CAPTURE_SETTINGS = CaptureSettings()
