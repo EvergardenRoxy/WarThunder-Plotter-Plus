@@ -37,7 +37,7 @@ def test_idle_fetches_only_map_info(capturer, client, conn):
 
 
 def test_valid_tick_records(capturer, client, conn, obj):
-    client.fetch_map_info.return_value = {"valid": True}
+    client.fetch_map_info.return_value = {"valid": True, "map_min": [0, 0], "map_max": [4096, 4096]}
     client.fetch_objects.return_value = [obj(0.5, 0.5)]
     capturer.run_once(0)
     stored = db.get_active_match(conn)
@@ -45,7 +45,7 @@ def test_valid_tick_records(capturer, client, conn, obj):
 
 
 def test_stop_ends_active_match(capturer, client, conn):
-    client.fetch_map_info.return_value = {"valid": True}
+    client.fetch_map_info.return_value = {"valid": True, "map_min": [0, 0], "map_max": [4096, 4096]}
     capturer.start()
     deadline = monotonic() + 2
     stored = db.get_active_match(conn)
@@ -78,7 +78,7 @@ def test_thread_dies_on_error(capturer, client, monkeypatch):
 
 
 def test_damage_unavailable_keeps_tracking(capturer, client, conn, obj):
-    client.fetch_map_info.return_value = {"valid": True}
+    client.fetch_map_info.return_value = {"valid": True, "map_min": [0, 0], "map_max": [4096, 4096]}
     client.fetch_objects.return_value = [obj(0.5, 0.5)]
     capturer.run_once(0)
     capturer.run_once(1)
@@ -88,7 +88,7 @@ def test_damage_unavailable_keeps_tracking(capturer, client, conn, obj):
 
 
 def test_damage_fetched_with_cursor(capturer, client, conn, obj):
-    client.fetch_map_info.return_value = {"valid": True}
+    client.fetch_map_info.return_value = {"valid": True, "map_min": [0, 0], "map_max": [4096, 4096]}
     client.fetch_objects.return_value = [obj(0.5, 0.5)]
     client.fetch_damage.return_value = [{"id": 7, "msg": "m", "time": 1}]
     capturer.run_once(0)

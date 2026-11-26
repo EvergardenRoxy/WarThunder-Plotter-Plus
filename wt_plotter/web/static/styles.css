@@ -1321,3 +1321,152 @@ input:is([type="range"], [type="checkbox"]) {
     display: none;
   }
 }
+
+/* 录像战报 */
+.badge.replay {
+  background: rgba(96, 165, 250, 0.16);
+  color: var(--capture);
+}
+
+.replay-report {
+  width: min(1180px, 96vw);
+  max-height: 90dvh;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.replay-report::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.replay-report-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.replay-report-head h3 {
+  margin: 0 0 0.2rem;
+}
+
+.replay-source,
+.replay-report .muted {
+  color: var(--muted);
+}
+
+.replay-error {
+  margin: 4px 0 0;
+  color: var(--kill);
+}
+
+.replay-teams {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
+  gap: 1rem;
+}
+
+.replay-team {
+  overflow-x: auto;
+}
+
+.replay-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.replay-table caption {
+  text-align: left;
+  font-weight: 600;
+  padding-bottom: 0.35rem;
+}
+
+.replay-table th,
+.replay-table td {
+  padding: 0.3rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.replay-table th:nth-child(-n + 2),
+.replay-table td:nth-child(-n + 2) {
+  text-align: left;
+}
+
+.replay-table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.replay-vehicles {
+  white-space: normal;
+}
+
+.replay-clan {
+  color: var(--muted);
+}
+
+.replay-lists {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.replay-lists h4 {
+  margin: 0 0 0.4rem;
+}
+
+.replay-kills,
+.replay-chat {
+  max-height: 16rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.replay-kills li,
+.replay-chat li {
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.replay-kills time,
+.replay-chat time {
+  display: inline-block;
+  min-width: 3rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.replay-import {
+  margin-bottom: 1rem;
+  color: var(--muted);
+}
+
+.replay-import summary {
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+}
+
+.replay-import .match-filters {
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.replay-import input[type="text"] {
+  min-width: 22rem;
+}
+
+.replay-import-status {
+  margin: 0;
+  min-height: 1.2em;
+}

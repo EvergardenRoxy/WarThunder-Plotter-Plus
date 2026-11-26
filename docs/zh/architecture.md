@@ -41,7 +41,8 @@ flowchart LR
 | `wt_plotter/maps/dhash.py` | 地图图片 dHash 计算与汉明距离 |
 | `wt_plotter/maps/lookup.py` | 按 dHash 精确/模糊反查地图 ID 与战斗类型 |
 | `wt_plotter/maps/table.py` | 内置地图哈希与元数据对照表 |
-| `wt_plotter/storage/db.py` | SQLite 表结构（`matches` / `ticks` / `positions` / `events` 及枚举表）与查询 |
+| `wt_plotter/storage/db.py` | SQLite 表结构（`matches` / `ticks` / `positions` / `events`、录像表及枚举表）与查询 |
+| `wt_plotter/replay/` | 游戏录像：`wrpl.py` 文件与包流、`blk.py` 二进制 BLK、`messages.py` 击杀与玩家槽位、`tracks.py` 轨迹公共部分、`aircraft.py` 飞机轨迹、`ground.py` 地面单位轨迹、`positions.py` 轨迹转 tick 与位置、`importer.py` 入库、`download.py` 服务器录像下载 |
 | `wt_plotter/web/app.py` | Flask 页面路由、JSON API（对局/位置/事件/状态/语言/关停） |
 | `wt_plotter/web/templates/` | Jinja 页面模板（`base` / `index` / `match` / `waiting`） |
 | `wt_plotter/web/static/viewer.js` | 画布主查看器（实时/回放、轨迹淡出、空战切换、死亡标记） |

@@ -320,3 +320,106 @@ def test_match_page_includes_enhanced_viewer_controls(client, match_id):
         'data-feed-filter="no_leave"',
     ):
         assert marker in html, marker
+
+
+def test_unknown_map_with_naval_spawns_infers_naval_mode(client, conn):
+    naval_id = db.start_match(conn, "1e989f059d086e49d8c69ce76486491c93ae372766ce01d027b48e1e8")
+    db.add_tick(
+        conn, naval_id, db.TickRecord(1.0, "tank", "", 0, 0),
+        [
+            db.PositionRecord(0.4, 0.3, "#174DFF", "respawn_base_destroyer", "respawn_base_destroyer", 1),
+            db.PositionRecord(0.5, 0.4, "#174DFF", "ground_model", "LightCruiser", 0),
+        ],
+    )
+    summary = client.get(f"/api/match/{naval_id}").json
+    assert summary["battle_type"] == "naval"
+    assert summary["mode"] == "naval"
+    filtered = client.get("/", query_string={"mode": "naval"}).text
+    assert f'<span class="match-number">#{naval_id}</span>' in filtered
+    match_html = client.get(f"/match/{naval_id}").text
+    assert 'data-battle-type="naval"' in match_html
+    assert translate("en", "unit.LightCruiser") in match_html
+
+
+def _save_replay(conn, match_id):
+    record = db.ReplayRecord("00000000000072c4", 1, "levels/avg_normandy.bin", "normandy_Dom",
+                             "air_ground_Dom", "2026-11-25T00:00:00", 61.5, None, None, None, 0, "test", 2)
+    player = db.ReplayPlayer("101", "Alice", "=TAG=", 1, 1, None, "bf-109f-4,la-7",
+                             2, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 900)
+    kill = db.ReplayKill(65.0, "Alice", "bf-109f-4", None, None)
+    chat = db.ReplayChat(5.0, "Alice", "<color=#fff>hi</color>")
+    db.save_replay(conn, match_id, record, [player], [kill], [chat])
+
+
+def test_replay_report_api_and_dialog(client, conn, match_id):
+    assert client.get(f"/api/match/{match_id}/replay").status_code == 404
+    db.end_match(conn, match_id)
+    _save_replay(conn, match_id)
+
+    report = client.get(f"/api/match/{match_id}/replay").get_json()
+    assert report["players"][0]["name"] == "Alice"
+    assert report["kills"][0]["timestamp_ms"] == 65000
+
+    html = client.get(f"/match/{match_id}").get_data(as_text=True)
+    assert 'id="open-report"' in html and 'id="replay-report"' in html
+    assert ">la-7<" in html and "1:05" in html
+    assert ">hi<" not in html and "hi</li>" in html
+    assert translate("en", "replay.badge") in client.get("/").get_data(as_text=True)
+
+
+def test_match_page_without_replay_has_no_report(client, match_id):
+    html = client.get(f"/match/{match_id}").get_data(as_text=True)
+    assert 'id="open-report"' not in html
+
+
+def test_match_page_parses_replays_on_open(client, match_id, monkeypatch):
+    from wt_plotter.web import app as app_module
+
+    calls = []
+    monkeypatch.setattr(app_module.importer, "ensure_parsed", lambda conn, mid, lang: calls.append((mid, lang)))
+    assert client.get(f"/match/{match_id}").status_code == 200
+    assert calls == [(match_id, "en")]
+
+
+def test_import_replays_endpoint(client, tmp_path, monkeypatch):
+    from wt_plotter.web import app as app_module
+
+    assert client.post("/api/replays/import", json={"path": str(tmp_path / "missing")}).status_code == 400
+    monkeypatch.setattr(app_module.importer, "import_new", lambda conn, paths: ([1, 2], ["x.wrpl: boom"]))
+    response = client.post("/api/replays/import", json={"path": str(tmp_path)})
+    assert response.get_json() == {"imported": 2, "errors": ["x.wrpl: boom"]}
+
+
+def test_download_replay_endpoint(client, tmp_path, monkeypatch):
+    from wt_plotter.web import app as app_module
+
+    assert client.post("/api/replays/download", json={"session": "??"}).status_code == 400
+
+    def missing(session, target):
+        raise FileNotFoundError(session)
+
+    monkeypatch.setattr(app_module.download, "download_server_replay", missing)
+    assert client.post("/api/replays/download", json={"session": "72c412c1002817ae"}).status_code == 404
+
+    monkeypatch.setattr(app_module.download, "download_server_replay", lambda session, target: tmp_path / session)
+    monkeypatch.setattr(app_module.importer, "load_path", lambda path: path)
+    monkeypatch.setattr(app_module.importer, "import_replay", lambda conn, replay, source, lang: 9)
+    assert client.post("/api/replays/download", json={"session": "72c412c1002817ae"}).get_json() == {"match_id": 9}
+
+
+def test_report_handles_known_victim_without_vehicle(client, conn, match_id):
+    db.end_match(conn, match_id)
+    _save_replay(conn, match_id)
+    replay_id = conn.execute("SELECT id FROM replays").fetchone()["id"]
+    with conn:
+        conn.execute("UPDATE replay_kills SET victim = 'Bob', victim_vehicle = NULL WHERE replay_id = ?", (replay_id,))
+    assert client.get(f"/match/{match_id}").status_code == 200
+
+
+def test_replay_match_without_map_uses_level(client, conn):
+    match_id = db.create_finished_match(conn, "2026-11-25T00:00:00", "2026-11-25T00:10:00", None)
+    _save_replay(conn, match_id)
+    data = client.get(f"/api/match/{match_id}").get_json()
+    assert data["map_id"] == "avg_normandy_tankmap"
+    assert data["map_name"] == translate("en", "map.avg_normandy_tankmap")
+    assert data["battle_type"] == "ground"

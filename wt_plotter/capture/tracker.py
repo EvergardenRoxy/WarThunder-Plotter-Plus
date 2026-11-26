@@ -7,7 +7,7 @@ from sqlite3 import Connection
 from wt_plotter.capture.air_transform import fit_air_transform, to_ground
 from wt_plotter.config import CAPTURE_DEFAULTS, CAPTURE_FILTERS, CAPTURE_SETTINGS
 from wt_plotter.maps.dhash import compute_dhash, is_map_loaded
-from wt_plotter.maps.lookup import lookup_map
+from wt_plotter.maps.lookup import image_key, lookup_map
 from wt_plotter.maps.table import BattleType, MapInfo, UNKNOWN_MAP
 from wt_plotter.storage import db
 
@@ -24,12 +24,13 @@ class _MatchState:
     nuke_detected: bool = False
     saved_pois: set[tuple[str, float, float]] = field(default_factory=set)
     initial_capture_set: bool = False
-    capture_signature: frozenset[tuple[float, float]] = frozenset()
+    base_capture_signature: frozenset[tuple[float, float]] = frozenset()
     previous_objects: list[dict] = field(default_factory=list)
     previous_air_view: bool = False
     transform: tuple[float, float, float, float] | None = None
     damage_cursor: int = 0
     damage_primed: bool = False
+    bounded_maps: set[str] = field(default_factory=set)
 
 
 class MatchTracker:
@@ -81,6 +82,17 @@ class MatchTracker:
             db.set_nuke(self.conn, state.match_id)
             state.nuke_detected = True
 
+    def record_map_bounds(self, map_info: dict) -> None:
+        """记下当前显示地图的世界坐标范围，供录像轨迹换算到地图上。"""
+        state = self._state
+        air = state.previous_air_view and state.air_map_hash
+        map_hash = state.air_map_hash if air else state.map_hash
+        if state.match_id is None or not map_hash or map_hash in state.bounded_maps:
+            return
+        (min_x, min_z), (max_x, max_z) = map_info["map_min"], map_info["map_max"]
+        db.save_map_bounds(self.conn, image_key(map_hash), (min_x, min_z, max_x, max_z))
+        state.bounded_maps.add(map_hash)
+
     def end_match(self) -> None:
         if self.match_id is not None:
             db.end_match(self.conn, self.match_id)
@@ -91,7 +103,7 @@ class MatchTracker:
         map_hash = compute_dhash(image) if loaded else ""
         map_info = lookup_map(map_hash)
         if loaded:
-            self._save_map_image(image, map_hash, map_info)
+            self._save_map_image(image, map_hash)
         self._state = _MatchState(
             db.start_match(self.conn, map_hash), now, map_hash, map_info,
             map_retry_at=None if loaded else now + CAPTURE_SETTINGS.map_retry_interval,
@@ -106,7 +118,7 @@ class MatchTracker:
         state.map_hash = compute_dhash(image)
         state.map_info = lookup_map(state.map_hash)
         state.map_retry_at = None
-        self._save_map_image(image, state.map_hash, state.map_info)
+        self._save_map_image(image, state.map_hash)
         db.set_map_hash(self.conn, state.match_id, state.map_hash)
 
     def _handle_invalid_match(self, now: float) -> None:
@@ -156,14 +168,6 @@ class MatchTracker:
         capture_zones = [
             (obj["x"], obj["y"]) for obj in valid_objects if obj.get("type") == CAPTURE_FILTERS.capture_zone_type
         ]
-        poi_changed = False
-        if capture_zones:
-            precision = CAPTURE_SETTINGS.signature_rounding
-            signature = frozenset((round(x, precision), round(y, precision)) for x, y in capture_zones)
-            # 同一组点位分批到达或暂时缺失时，不切换视角。
-            previous = state.capture_signature
-            poi_changed = not (previous <= signature or signature <= previous)
-            state.capture_signature = signature
         if capture_zones and not state.initial_capture_set:
             count = len(capture_zones)
             db.set_initial_capture(
@@ -177,10 +181,19 @@ class MatchTracker:
             isinstance(icon := obj.get("icon"), str) and icon.lower() in CAPTURE_FILTERS.air_defence_icons
             for obj in valid_objects
         )
-        if air_defence_seen:
+        if capture_zones:
+            precision = CAPTURE_SETTINGS.signature_rounding
+            signature = frozenset((round(x, precision), round(y, precision)) for x, y in capture_zones)
+            # 基准占领点集合代表主图（陆/海）坐标；分批到达或暂时缺失时仍属主图。
+            base = state.base_capture_signature
+            if not base or signature <= base or base <= signature:
+                state.base_capture_signature = base | signature
+                air_view = False
+            else:
+                air_view = True
+        elif not state.base_capture_signature and air_defence_seen:
+            # 无占领点的纯空战图上，防空炮表明处于空中视角。
             air_view = True
-        elif poi_changed:
-            air_view = not state.previous_air_view
         else:
             air_view = state.previous_air_view
         if is_air or air_view:
@@ -205,7 +218,7 @@ class MatchTracker:
         positions = []
         for obj in objects:
             obj_type = obj.get("type", "unknown")
-            is_poi = obj_type in CAPTURE_FILTERS.poi_types
+            is_poi = CAPTURE_FILTERS.is_poi(obj_type)
             x, y = obj["x"], obj["y"]
             # 出生点、机场等静态标记每个位置只存一次。
             if is_poi and obj_type != CAPTURE_FILTERS.capture_zone_type:
@@ -230,14 +243,13 @@ class MatchTracker:
         map_hash = compute_dhash(image)
         if map_hash == state.map_hash:
             return
-        self._save_map_image(image, map_hash, lookup_map(map_hash))
+        self._save_map_image(image, map_hash)
         db.set_air_map(self.conn, state.match_id, map_hash)
         state.air_map_hash = map_hash
 
-    def _save_map_image(self, image: bytes, map_hash: str, map_info: MapInfo) -> None:
-        key = map_hash if map_info.map_id in ("unknown", "no_map") else map_info.map_id
+    def _save_map_image(self, image: bytes, map_hash: str) -> None:
         self.maps_dir.mkdir(parents=True, exist_ok=True)
-        path = self.maps_dir / f"{key}.png"
+        path = self.maps_dir / f"{image_key(map_hash)}.png"
         if not path.exists():
             path.write_bytes(image)
 

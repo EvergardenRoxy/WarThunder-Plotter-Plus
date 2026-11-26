@@ -291,6 +291,50 @@ test('drops unit icons that are not displayed', async () => {
     assert.equal(viewer.positionCount, 6);
 });
 
+test('keeps naval ship icons and draws naval aircraft on naval base maps', async () => {
+    const context = load('tracks.js', 'viewer.js');
+    const viewer = makeViewer(context, { battleType: 'naval' });
+    const base = { tick_id: 1, x: 0.5, y: 0.5, type: 'ground_model', color: '#174DFF', is_poi: 0 };
+    context.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+            ticks: [{ id: 1, timestamp: 1000, is_player_air_view: 0 }],
+            positions: [
+                { ...base, icon: 'Boat' },
+                { ...base, icon: 'Destroyer', color: '#67D756' },
+                { ...base, icon: 'MissileDestroyer' },
+                { ...base, icon: 'LightCruiser' },
+                { ...base, icon: 'HeavyCruiser' },
+                { ...base, icon: 'Battleship' },
+                { ...base, type: 'aircraft', icon: 'Bomber', color: '#39D921' },
+            ],
+        }),
+    });
+    await viewer._loadPositions();
+    assert.deepEqual(
+        viewer.positions.map(pos => pos.icon),
+        ['Boat', 'Destroyer', 'MissileDestroyer', 'LightCruiser', 'HeavyCruiser', 'Battleship', 'Bomber'],
+    );
+    assert.equal(viewer.tracks.length, 7);
+});
+
+test('draws aircraft on ground maps only when tracks come from a replay', async () => {
+    const context = load('tracks.js', 'viewer.js');
+    const base = { tick_id: 1, x: 0.5, y: 0.5, color: '#174DFF', is_poi: 0 };
+    context.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+            ticks: [{ id: 1, timestamp: 1000, is_player_air_view: 0 }],
+            positions: [{ ...base, type: 'ground_model', icon: 'MediumTank' }, { ...base, type: 'aircraft', icon: 'Fighter' }],
+        }),
+    });
+    for (const [replayTracks, count] of [[false, 1], [true, 2]]) {
+        const viewer = makeViewer(context, { battleType: 'ground', replayTracks });
+        await viewer._loadPositions();
+        assert.equal(viewer.tracks.length, count);
+    }
+});
+
 test('tracks keep the unit icon', () => {
     const viewer = makeViewer(load('tracks.js', 'viewer.js'), {
         positions: [{ type: 'ground_model', icon: 'HeavyTank', color: '#174DFF', x: 0.5, y: 0.5, timestamp: 0 }],
@@ -543,6 +587,19 @@ test('marker label shows the exact vehicle when known', () => {
     const viewer = makeViewer(context);
     assert.equal(viewer._markerLabel({ icon: 'Player', vehicle: 'germ_pzkpfw_IV_ausf_F2' }), 'unit.Player · germ pzkpfw IV ausf F2');
     assert.equal(viewer._markerLabel({ icon: 'Fighter', vehicle: '' }), 'unit.Fighter');
+    assert.equal(viewer._markerLabel({ icon: 'Fighter', vehicle: 'yak-3', name: 'Alice' }), 'Alice · unit.Fighter · yak-3');
+});
+
+test('replay positions carry name and vehicle into track points', () => {
+    const viewer = makeViewer(load('tracks.js', 'viewer.js'), { battleType: 'air', mapKind: 'ground', filters: {} });
+    viewer.positions = [{
+        timestamp: 1000, x: 0.5, y: 0.5, color: '#174DFF', type: 'aircraft', icon: 'Fighter',
+        unit_name: 'Bob', unit_vehicle: 'la-7', vehicle_type: 'yak-3',
+    }];
+    viewer._buildTracks();
+    const [point] = viewer.tracks[0].points;
+    assert.equal(point.name, 'Bob');
+    assert.equal(point.vehicle, 'la-7');
 });
 
 test('death marks only for always-visible sides and only once a track cannot resume', () => {

@@ -2,6 +2,14 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.5.0
+
+- Added game replay import: read local `.wrpl` replays, or download server replays by session id or link. Each match gets a replay report with every player's team, squadron, score, kills, assists, deaths and vehicles, the player kill log (who destroyed whom with which vehicle), and chat.
+- Replays rebuild tracks: every aircraft in air battles (including your own and AI, with AI teams inferred from kills), and every ground unit plus player-flown aircraft in ground battles. Matches without an 8111 recording can be played back, and hovering a unit shows the player name and vehicle. Static map objects are not drawn.
+- Folder import reads only each replay's header and final results, so a hundred replays take under a second; the kill log, chat and tracks are parsed the first time a match is opened. Damaged files or files still being written are only listed as failures; if a full parse fails the match still opens and the report states why.
+- 8111 capture now records each minimap's world bounds so replay tracks land precisely on the map, and 8111 recordings are linked to replays of the same match automatically.
+- Improved air-view detection (based on the main map's capture zones); all spawn point types (naval included) count as static markers, ships are drawn as hull shapes pointing along their heading, and naval matches without a map hash are recognized by their spawn points.
+
 ## 0.4.7
 
 - Refined the dark UI with tactical amber-gold accents, frosted-glass map overlays, a pulsing live badge, and aligned Start/Duration column headers in Match history.

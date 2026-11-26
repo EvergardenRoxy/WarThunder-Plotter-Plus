@@ -52,6 +52,64 @@ if (matchFilterForm) {
     }
 }
 
+// 导入本地录像目录 / 下载服务器录像。
+const replayFolderForm = document.getElementById('replay-folder-form');
+if (replayFolderForm) {
+    const folderInput = document.getElementById('replay-folder');
+    const status = document.getElementById('replay-import-status');
+    folderInput.value = localStorage.getItem('replayFolder') ?? '';
+
+    async function submitReplay(form, url, body) {
+        const button = form.querySelector('button');
+        button.disabled = true;
+        status.textContent = t('replay.working');
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                status.textContent = t(`error.${data.error}`);
+                return;
+            }
+            if (data.match_id !== undefined) {
+                window.location.href = `/match/${data.match_id}`;
+                return;
+            }
+            status.textContent = t('replay.imported', { count: data.imported })
+                + (data.errors.length ? ` ${t('replay.import_errors', { files: data.errors.join('; ') })}` : '');
+            if (data.imported) setTimeout(() => window.location.reload(), 1200);
+        } catch {
+            status.textContent = t('error.request_failed');
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    replayFolderForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        localStorage.setItem('replayFolder', folderInput.value);
+        submitReplay(replayFolderForm, '/api/replays/import', { path: folderInput.value });
+    });
+    const sessionForm = document.getElementById('replay-session-form');
+    sessionForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        submitReplay(sessionForm, '/api/replays/download', { session: document.getElementById('replay-session').value });
+    });
+}
+
+// 录像战报弹窗。
+const replayReport = document.getElementById('replay-report');
+if (replayReport) {
+    document.getElementById('open-report').addEventListener('click', () => replayReport.showModal());
+    replayReport.querySelector('[data-close-report]').addEventListener('click', () => replayReport.close());
+    replayReport.addEventListener('click', (event) => {
+        if (event.target === replayReport) replayReport.close();
+    });
+}
+
 const captureStopped = document.getElementById('capture-stopped');
 async function pollCaptureStatus() {
     try {
@@ -232,6 +290,7 @@ if (mapCanvas) {
     const viewer = new MatchViewer(mapCanvas.id, Number(mapCanvas.dataset.matchId), {
         isLive: mapCanvas.dataset.live === 'true',
         battleType: mapCanvas.dataset.battleType,
+        replayTracks: mapCanvas.dataset.replayTracks === 'true',
         mapKind: mapCanvas.dataset.defaultMap,
         placeholderVehicles: JSON.parse(mapCanvas.dataset.placeholderVehicles),
         pollInterval: 500,

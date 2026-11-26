@@ -6,7 +6,7 @@ Every 0.2 seconds the program reads the game client's local interface at `http:/
 
 ## When a match starts and ends
 
-- **Start**: a match is created when the interface reports a valid map (you are in a battle and can see the minimap). The minimap image is saved at the same time.
+- **Start**: a match is created when the interface reports a valid map (you are in a battle and can see the minimap). The minimap image is saved at the same time, along with the map's world bounds from `map_info.json`, which [game replay](replay.md) tracks use for placement.
 - **End**: the map has been invalid for 20 seconds (you are back in the hangar), the map changed to a different one, or the program quit.
 - **Test drives and the firing range** are recorded as matches too. Delete them from the match list if you do not want them.
 - A match left open by a crash is closed the next time capture starts.

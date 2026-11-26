@@ -77,6 +77,8 @@ class Capturer:
         indicators = self.client.fetch_indicators() if map_valid else None
         objects = self.client.fetch_objects() if map_valid else None
         self._tracker.tick(now, map_valid, indicators, objects)
+        if map_valid:
+            self._tracker.record_map_bounds(map_info)
         # 播报不可用（返回 None）时只跳过播报，轨迹照常采集。
         damage = self.client.fetch_damage(self._tracker.damage_cursor) if map_valid else None
         if damage is not None:

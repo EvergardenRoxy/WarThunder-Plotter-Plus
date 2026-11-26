@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from functools import cache
 import json
 import logging
+from pathlib import Path
 from string import hexdigits
 
 from wt_plotter.config import HASH_SETTINGS, PATHS
@@ -54,3 +55,28 @@ def lookup_map(dhash: str) -> MapInfo:
     logger.warning("No hash match found for: %s (%s chars)", dhash, len(dhash))
     _append_missing_hash(dhash, distance, closest_hash, closest.map_id)
     return UNKNOWN_MAP
+
+
+def hash_for_map_id(map_id: str) -> str | None:
+    """按地图 ID 反查内置哈希；没有截图哈希的录像比赛靠它显示地图。"""
+    return next((dhash for dhash, info in MAPS.items() if info.map_id == map_id), None)
+
+
+def image_key(map_hash: str) -> str:
+    """地图图片与地图范围的存储键：已知地图用 ID，未知地图用哈希。"""
+    map_id = lookup_map(map_hash).map_id
+    return map_hash if map_id in ("unknown", "no_map") else map_id
+
+
+def is_ground_battle(battle_class: str) -> bool:
+    """录像的战斗类别：陆战是 air_ground_*，其余按空战处理。"""
+    return battle_class.startswith("air_ground")
+
+
+def level_map_id(level: str, battle_class: str) -> str | None:
+    """关卡文件对应的地图 ID：陆战用坦克地图，空战用空战地图。"""
+    name = Path(level).stem
+    known = {info.map_id for info in MAPS.values()}
+    tankmap = [f"{name}_tankmap"] if is_ground_battle(battle_class) else []
+    candidates = tankmap + [f"{name}_map", name]
+    return next((map_id for map_id in candidates if map_id in known), None)

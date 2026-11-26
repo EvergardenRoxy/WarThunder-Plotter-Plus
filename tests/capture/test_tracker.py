@@ -194,13 +194,44 @@ def test_air_view_persists_without_air_defence(setup, conn, zone_frames):
     assert [tick["is_player_air_view"] for tick in bundle["ticks"]] == [0, 1, 1]
 
 
-def test_air_defence_forces_air_view(setup, conn, obj, zone_frames):
+def test_air_defence_on_base_zones_keeps_ground_view(setup, conn, obj, zone_frames):
+    # 海战开局主图自带陆地防空炮，只要占领点还在基准坐标上就不能误判为空中视角。
     match, _, _ = setup
-    ground, _ = zone_frames
-    match.tick(0, True, {"army": "tank"}, ground)
-    match.tick(1, True, {"army": "tank"}, ground + [obj(0.5, 0.5, icon="Airdefence")])
-    bundle = db.get_positions_bundle(conn, match.match_id, 1000)
+    ground, air = zone_frames
+    match.tick(0, True, {"army": "air", "type": "dummy_plane"}, ground + [obj(0.85, 0.05, icon="Airdefence")])
+    match.tick(1, True, {"army": "tank"}, ground)
+    match.tick(2, True, {"army": "tank"}, air)
+    match.tick(3, True, {"army": "tank"}, ground)
+    bundle = db.get_positions_bundle(conn, match.match_id, 0)
+    assert [tick["is_player_air_view"] for tick in bundle["ticks"]] == [0, 0, 1, 0]
+    stored = db.get_active_match(conn)
+    assert (stored.air_transform_a, stored.air_transform_b, stored.air_transform_c, stored.air_transform_d) == (
+        pytest.approx((0.25, 0.1, 0.25, 0.2))
+    )
+
+
+def test_air_defence_without_zones_sets_air_view(setup, conn, obj):
+    match, _, _ = setup
+    match.tick(0, True, {"army": "air"}, [obj(0.5, 0.5, icon="Airdefence")])
+    bundle = db.get_positions_bundle(conn, match.match_id, 0)
     assert bundle["ticks"][0]["is_player_air_view"] == 1
+
+
+def test_naval_respawn_pois_deduplicated(setup, conn, obj):
+    match, _, _ = setup
+    objects = [
+        obj(0.4, 0.3, type="respawn_base_destroyer", icon="respawn_base_destroyer"),
+        obj(0.4, 0.3, type="respawn_base_destroyer", icon="respawn_base_destroyer"),
+        obj(0.2, 0.4, type="respawn_base_ship", icon="respawn_base_ship"),
+        obj(0.3, 0.2, type="respawn_base_bomber", icon="respawn_base_bomber"),
+        obj(0.5, 0.5, icon="LightCruiser"),
+    ]
+    match.tick(0, True, None, objects)
+    match.tick(1, True, None, objects)
+    positions = db.get_positions_bundle(conn, match.match_id, 0)["positions"]
+    pois = [p for p in positions if p["is_poi"] == 1]
+    assert sorted(p["type"] for p in pois) == ["respawn_base_bomber", "respawn_base_destroyer", "respawn_base_ship"]
+    assert sum(1 for p in positions if p["icon"] == "LightCruiser") == 2
 
 
 def test_tick_without_zones_keeps_view(setup, conn, obj, zone_frames):
@@ -388,3 +419,16 @@ def test_restored_image_with_invalid_telemetry_does_not_split_pending_match(setu
     match.tick(CAPTURE_SETTINGS.map_retry_interval, True, None, None)
     assert [stored.id for stored in db.get_all_matches(conn)] == [match_id]
     assert db.get_match(conn, match_id).map_hash == compute_dhash(fetch.return_value)
+
+
+def test_record_map_bounds_once_per_map(conn, tmp_path):
+    match_tracker = tracker.MatchTracker(conn, lambda: None, tmp_path)
+    info = {"map_min": [-100.0, -200.0], "map_max": [300.0, 400.0]}
+    match_tracker.record_map_bounds(info)
+    assert conn.execute("SELECT COUNT(*) FROM map_bounds").fetchone()[0] == 0
+    map_hash = lookup.hash_for_map_id("avg_normandy_tankmap")
+    match_tracker._state.match_id = db.start_match(conn, map_hash)
+    match_tracker._state.map_hash = map_hash
+    match_tracker.record_map_bounds(info)
+    match_tracker.record_map_bounds({"map_min": [0, 0], "map_max": [1, 1]})
+    assert db.get_map_bounds(conn, "avg_normandy_tankmap") == (-100.0, -200.0, 300.0, 400.0)
