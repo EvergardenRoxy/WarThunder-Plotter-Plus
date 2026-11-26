@@ -8,6 +8,11 @@ import pytest
 from wt_plotter.storage import db
 
 
+def position_dicts(bundle):
+    """把位置的行数组还原成字典，便于断言。"""
+    return [dict(zip(bundle["fields"], row)) for row in bundle["rows"]]
+
+
 UPSTREAM_DB = Path(__file__).resolve().parents[2] / "reference" / "upstream" / "data" / "matches.db"
 TICK = db.TickRecord(1.5, "tank", "tank_test", 0, 0)
 POSITION = db.PositionRecord(0.1234567, 0.6, "#FA0C00", "ground_model", "Tank", 0)
@@ -48,21 +53,21 @@ def test_add_tick_and_bundle(conn):
     db.add_tick(conn, match_id, TICK, [POSITION, mapped])
     bundle = db.get_positions_bundle(conn, match_id, 0)
     assert bundle["ticks"][0]["timestamp"] == 1500
-    assert len(bundle["positions"]) == 2
-    assert set(bundle["positions"][0]) == {
-        "id", "tick_id", "x", "y", "color", "type", "icon", "is_poi", "x_ground", "y_ground",
+    assert len(position_dicts(bundle)) == 2
+    assert set(position_dicts(bundle)[0]) == {
+        "tick_id", "x", "y", "color", "type", "icon", "is_poi", "x_ground", "y_ground",
         "unit_name", "unit_vehicle",
     }
-    assert (bundle["positions"][0]["unit_name"], bundle["positions"][0]["unit_vehicle"]) == (None, None)
-    assert bundle["positions"][1]["x_ground"] == 0.4
-    assert (bundle["positions"][1]["unit_name"], bundle["positions"][1]["unit_vehicle"]) == ("Alice", "us_m4a1")
+    assert (position_dicts(bundle)[0]["unit_name"], position_dicts(bundle)[0]["unit_vehicle"]) == (None, None)
+    assert position_dicts(bundle)[1]["x_ground"] == 0.4
+    assert (position_dicts(bundle)[1]["unit_name"], position_dicts(bundle)[1]["unit_vehicle"]) == ("Alice", "us_m4a1")
     assert db.get_latest_tick(conn, match_id) == db.TickRecord(1500, "tank", "tank_test", 0, 0)
 
 
 def test_quantize(conn):
     match_id = db.start_match(conn, "hash")
     db.add_tick(conn, match_id, TICK, [POSITION])
-    assert db.get_positions_bundle(conn, match_id, 0)["positions"][0]["x"] == 0.12346
+    assert position_dicts(db.get_positions_bundle(conn, match_id, 0))[0]["x"] == 0.12346
 
 
 def test_since_filter(conn):
@@ -71,8 +76,8 @@ def test_since_filter(conn):
         db.add_tick(conn, match_id, db.TickRecord(timestamp, "tank", "", 0, 0), [POSITION])
     bundle = db.get_positions_bundle(conn, match_id, 1500)
     assert [tick["timestamp"] for tick in bundle["ticks"]] == [2000]
-    assert len(bundle["positions"]) == 1
-    assert bundle["positions"][0]["tick_id"] == bundle["ticks"][0]["id"]
+    assert len(position_dicts(bundle)) == 1
+    assert position_dicts(bundle)[0]["tick_id"] == bundle["ticks"][0]["id"]
 
 
 def test_delete(conn):

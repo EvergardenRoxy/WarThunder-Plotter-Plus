@@ -408,7 +408,7 @@
   "replay.none": "None",
   "replay.parse_failed": "Replay could not be parsed, only the scoreboard is shown: {source} ({error})",
   "replay.import_title": "Import game replays",
-  "replay.folder": "Local replay folder (Replays in the game folder)",
+  "replay.folder": "Local replay path (game Replays folder, a single replay, or a server replay folder)",
   "replay.import_folder": "Import new replays",
   "replay.session": "Server replay session id or link",
   "replay.download": "Download and import",
@@ -421,5 +421,18 @@
   "error.replay_not_found": "This match has no replay.",
   "replay.event_kill": "{killer} ({killer_vehicle}) destroyed {victim} ({victim_vehicle})",
   "replay.event_kill_unknown": "{killer} ({killer_vehicle}) destroyed a target",
-  "replay.event_crash": "{victim} crashed"
+  "replay.event_crash": "{victim} crashed",
+  "viewer.loading_tracks": "Loading tracks...",
+  "replay.captures": "Caps",
+  "replay.captures_title": "Zones captured",
+  "replay.zone_damage": "Zone dmg",
+  "replay.zone_damage_title": "Damage to bases and zones (thousands, as on the in-game scoreboard)",
+  "replay.result_success": "Victory",
+  "replay.result_fail": "Defeat",
+  "replay.scoreboard": "Scores",
+  "replay.scoreboard_title": "Show the scoreboard from the replay",
+  "replay.files": "Choose replay files (multiple allowed)",
+  "replay.server_folder": "or choose a server replay folder",
+  "replay.upload": "Import selected replays",
+  "replay.no_files": "No .wrpl replay files selected."
 }

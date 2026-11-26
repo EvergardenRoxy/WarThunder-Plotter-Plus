@@ -79,11 +79,11 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
         army = db.first_sortie_army(connection(), match.id, CAPTURE_DEFAULTS.placeholder_vehicles)
         return army == CAPTURE_DEFAULTS.air_army_type
 
-    def match_summary(match, nuke_ids=None, replay_levels=None):
+    def match_summary(match, nuke_ids=None, replay_levels=None, naval_ids=None):
         info = map_metadata(match.map_hash)
-        if info["battle_type"] == BattleType.UNKNOWN.value and db.has_naval_spawn(
-            connection(), match.id, CAPTURE_FILTERS.naval_spawn_types
-        ):
+        if naval_ids is None:
+            naval_ids = db.get_naval_spawn_match_ids(connection(), CAPTURE_FILTERS.naval_spawn_types)
+        if info["battle_type"] == BattleType.UNKNOWN.value and match.id in naval_ids:
             info["battle_type"] = BattleType.NAVAL.value
         levels = db.get_replay_levels(connection()) if replay_levels is None else replay_levels
         if match.id in levels:
@@ -109,8 +109,8 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
     def map_label(info, mode):
         return f"{BATTLE_ICONS[mode]} {info['map_name']}".strip()
 
-    def match_page_data(match, nuke_ids=None, replay_levels=None):
-        payload = match_summary(match, nuke_ids, replay_levels)
+    def match_page_data(match, nuke_ids=None, replay_levels=None, naval_ids=None):
+        payload = match_summary(match, nuke_ids, replay_levels, naval_ids)
         air_map = map_metadata(match.air_map_hash) if match.air_map_hash else None
         has_air_view = bool(air_map) or db.has_air_view(connection(), match.id)
         return {
@@ -152,6 +152,8 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
         vehicles_by_match = db.get_match_vehicles(conn, CAPTURE_DEFAULTS.placeholder_vehicles)
         replay_levels = db.get_replay_levels(conn)
         nuke_ids = db.get_nuke_event_match_ids(conn)
+        naval_ids = db.get_naval_spawn_match_ids(conn, CAPTURE_FILTERS.naval_spawn_types)
+        position_counts = db.get_position_counts(conn)
         matches_by_date = {}
         for match in db.get_all_matches(conn):
             start = datetime.fromisoformat(match.started_at)
@@ -159,7 +161,7 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
             if selected_date and day != selected_date:
                 continue
 
-            info = match_page_data(match, nuke_ids, replay_levels)
+            info = match_page_data(match, nuke_ids, replay_levels, naval_ids)
             if allowed_modes and info["mode"] not in allowed_modes:
                 continue
             if map_search:
@@ -175,7 +177,7 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
                 **info,
                 "start_time": start.strftime("%H:%M"),
                 "duration_seconds": max(0, int((end - start).total_seconds())),
-                "position_count": db.count_positions(conn, match.id),
+                "position_count": position_counts.get(match.id, 0),
                 "vehicles": [format_vehicle_name(v) for v in vehicles_by_match.get(match.id, ())],
                 "has_map_image": bool(map_hash),
                 "has_replay": match.id in replay_levels,
@@ -196,6 +198,14 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
         importer.ensure_parsed(connection(), match_id, g.lang)
         return render_match(db.get_match(connection(), match_id), match.ended_at is None)
 
+    @app.get("/match/<int:match_id>/scoreboard")
+    def match_scoreboard(match_id):
+        """历史战局下拉栏里的录像战绩；只读已导入的摘要，不触发完整解析。"""
+        report = db.get_replay_report(connection(), match_id)
+        if report is None:
+            return "", 404
+        return render_template("_scoreboard.html", report=report)
+
     @app.get("/live")
     def live_view():
         match = db.get_active_match(connection())
@@ -207,8 +217,10 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
     def api_matches():
         conn = connection()
         nuke_ids = db.get_nuke_event_match_ids(conn)
+        naval_ids = db.get_naval_spawn_match_ids(conn, CAPTURE_FILTERS.naval_spawn_types)
+        position_counts = db.get_position_counts(conn)
         return jsonify([
-            {**match_summary(match, nuke_ids), "position_count": db.count_positions(conn, match.id)}
+            {**match_summary(match, nuke_ids, naval_ids=naval_ids), "position_count": position_counts.get(match.id, 0)}
             for match in db.get_all_matches(conn)
         ])
 
@@ -268,10 +280,23 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
 
     @app.post("/api/replays/import")
     def api_import_replays():
-        folder = Path(request.get_json()["path"])
-        if not folder.is_dir():
+        # 可以是录像文件夹，也可以是单个录像文件或服务器录像的分段目录。
+        path = Path(request.get_json()["path"])
+        if not path.exists():
             return jsonify(error="replay_folder_not_found"), 400
-        match_ids, errors = importer.import_new(connection(), [folder])
+        match_ids, errors = importer.import_new(connection(), [path])
+        return jsonify(imported=len(match_ids), errors=errors)
+
+    @app.post("/api/replays/upload")
+    def api_upload_replays():
+        """手动选择的录像（不在游戏录像目录里的）：先存进数据目录，再按文件夹导入的方式导入。"""
+        files = [(file.filename, file.read()) for file in request.files.getlist("files")]
+        sources, errors = importer.store_uploads(files, PATHS.replays_dir)
+        match_ids, import_errors = importer.import_new(connection(), sources)
+        errors += import_errors
+        # 只选了一份录像就直接打开它（之前导入过的也一样）。
+        if len(sources) == 1 and not errors:
+            return jsonify(match_id=db.find_replay_match(connection(), importer.read_header(sources[0]).session_hex))
         return jsonify(imported=len(match_ids), errors=errors)
 
     @app.post("/api/replays/download")

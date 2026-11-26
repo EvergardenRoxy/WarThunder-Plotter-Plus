@@ -52,6 +52,25 @@ if (matchFilterForm) {
     }
 }
 
+// 加载遮罩：生成历史战局、首次解析录像都要几秒，跳转时先盖住旧页面。
+const pageLoading = document.getElementById('page-loading');
+function showPageLoading() {
+    pageLoading.querySelector('[data-loading-text]').textContent = t('viewer.loading');
+    pageLoading.hidden = false;
+}
+document.addEventListener('click', (event) => {
+    const link = event.target.closest('a[href]');
+    // 新标签页打开、页内锚点不算跳转。
+    if (!link || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || link.target
+        || link.origin !== location.origin || link.getAttribute('href').startsWith('#')) return;
+    showPageLoading();
+});
+for (const form of document.querySelectorAll('form[action]')) form.addEventListener('submit', showPageLoading);
+// 从往返缓存返回时页面还停在遮罩上。
+window.addEventListener('pageshow', (event) => {
+    if (event.persisted) pageLoading.hidden = true;
+});
+
 // 导入本地录像目录 / 下载服务器录像。
 const replayFolderForm = document.getElementById('replay-folder-form');
 if (replayFolderForm) {
@@ -59,15 +78,17 @@ if (replayFolderForm) {
     const status = document.getElementById('replay-import-status');
     folderInput.value = localStorage.getItem('replayFolder') ?? '';
 
+    // body 是 FormData 时按文件上传，否则发 JSON。
     async function submitReplay(form, url, body) {
         const button = form.querySelector('button');
         button.disabled = true;
         status.textContent = t('replay.working');
         try {
+            const upload = body instanceof FormData;
             const response = await fetch(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
+                headers: upload ? {} : { 'Content-Type': 'application/json' },
+                body: upload ? body : JSON.stringify(body)
             });
             const data = await response.json();
             if (!response.ok) {
@@ -75,12 +96,13 @@ if (replayFolderForm) {
                 return;
             }
             if (data.match_id !== undefined) {
+                showPageLoading();
                 window.location.href = `/match/${data.match_id}`;
                 return;
             }
             status.textContent = t('replay.imported', { count: data.imported })
                 + (data.errors.length ? ` ${t('replay.import_errors', { files: data.errors.join('; ') })}` : '');
-            if (data.imported) setTimeout(() => window.location.reload(), 1200);
+            if (data.imported) setTimeout(() => { showPageLoading(); window.location.reload(); }, 1200);
         } catch {
             status.textContent = t('error.request_failed');
         } finally {
@@ -93,10 +115,46 @@ if (replayFolderForm) {
         localStorage.setItem('replayFolder', folderInput.value);
         submitReplay(replayFolderForm, '/api/replays/import', { path: folderInput.value });
     });
+    const uploadForm = document.getElementById('replay-upload-form');
+    uploadForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const files = [...document.getElementById('replay-files').files, ...document.getElementById('replay-parts').files]
+            .filter(file => file.name.toLowerCase().endsWith('.wrpl'));
+        if (!files.length) {
+            status.textContent = t('replay.no_files');
+            return;
+        }
+        const body = new FormData();
+        for (const file of files) body.append('files', file);
+        submitReplay(uploadForm, '/api/replays/upload', body);
+    });
     const sessionForm = document.getElementById('replay-session-form');
     sessionForm.addEventListener('submit', (event) => {
         event.preventDefault();
         submitReplay(sessionForm, '/api/replays/download', { session: document.getElementById('replay-session').value });
+    });
+}
+
+// 历史战局：展开录像战绩，第一次展开时才向服务器要。
+for (const button of document.querySelectorAll('.btn-scoreboard')) {
+    button.addEventListener('click', async () => {
+        const panel = document.getElementById(button.getAttribute('aria-controls'));
+        const open = button.getAttribute('aria-expanded') !== 'true';
+        button.setAttribute('aria-expanded', String(open));
+        panel.hidden = !open;
+        if (!open || panel.dataset.loaded) return;
+        panel.dataset.loaded = 'true';
+        panel.textContent = t('viewer.loading');
+        try {
+            const response = await fetch(panel.dataset.url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            // 服务器用模板渲染（已转义）的片段，解析成节点放进去。
+            const html = new DOMParser().parseFromString(await response.text(), 'text/html');
+            panel.replaceChildren(...html.body.childNodes);
+        } catch {
+            panel.textContent = t('error.request_failed');
+            delete panel.dataset.loaded;
+        }
     });
 }
 
@@ -361,6 +419,7 @@ if (mapCanvas) {
             markMapKind(view);
         }
     });
+    viewer.loaded.then(() => { pageLoading.hidden = true; });
 
     const applySidebar = collapsed => {
         viewerRoot.classList.toggle('sidebar-collapsed', collapsed);

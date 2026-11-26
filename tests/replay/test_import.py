@@ -15,6 +15,8 @@ PLAYERS = ([("timePlayed", 30.0)], [
     ("matchingInfo", ([], [("202", ([], [("crafts_info", ([], [("array0", ([("name", "la-7"), ("rank", 4)], []))]))]))])),
     player_block(101, "Alice", 1, kills=1, score=500),
     player_block(202, "Bob", 2, score=100),
+    # 空位：不是玩家，不应写入战绩。
+    player_block(-1, "", 0),
 ])
 MPI = wrpl.PACKET_MPI
 
@@ -180,6 +182,26 @@ def test_import_new_skips_unreadable_files(conn, tmp_path):
     match_ids, errors = importer.import_new(conn, [folder])
     assert len(match_ids) == 1
     assert len(errors) == 1 and errors[0].startswith("0_empty.wrpl")
+
+
+def test_store_uploads_groups_server_parts_and_imports(conn, tmp_path):
+    client = build_wrpl(battle_packets(), PLAYERS, start_time=START, session=0x10)
+    part0 = build_wrpl(battle_packets(), None, start_time=START, session=0x20, server=True)
+    part1 = build_wrpl(battle_packets(), PLAYERS, start_time=START, session=0x20, server=True, part=1, settings=False)
+    target = tmp_path / "data"
+    files = [("#2026.11.26 01.20.28.wrpl", client), ("0001.wrpl", part1), ("0000.wrpl", part0), ("notes.wrpl", b"x")]
+    sources, errors = importer.store_uploads(files, target)
+    # 客户端录像按场次命名；服务器分段按场次放进同一目录。
+    assert sources == [target / "0000000000000020", target / "local" / "0000000000000010.wrpl"]
+    assert sorted(path.name for path in sources[0].iterdir()) == ["0000.wrpl", "0001.wrpl"]
+    assert len(errors) == 1 and errors[0].startswith("notes.wrpl")
+    match_ids, errors = importer.import_new(conn, sources)
+    assert len(match_ids) == 2 and errors == []
+
+
+def test_import_new_accepts_a_single_file(conn, tmp_path):
+    [match_id], errors = importer.import_new(conn, [write(tmp_path, "a.wrpl")])
+    assert errors == [] and db.get_replay_report(conn, match_id)["players"]
 
 
 def test_failed_summary_leaves_no_match(conn, tmp_path, monkeypatch):

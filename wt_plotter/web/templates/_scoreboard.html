@@ -1,0 +1,44 @@
+{# 两队战绩表：查看页的战报弹窗和历史战局的下拉栏共用。 #}
+{% set rp = report.replay %}
+<p class="replay-source">
+    {{ t('replay.server' if rp.is_server else 'replay.client') }} · {{ rp.mission }} · {{ (rp.duration * 1000) | int | clock }}
+    {% if rp.status == 'success' %}· <span class="replay-result success">{{ t('replay.result_success') }}</span>
+    {% elif rp.status == 'fail' %}· <span class="replay-result fail">{{ t('replay.result_fail') }}</span>{% endif %}
+</p>
+<div class="replay-teams">
+    {% for team, players in report.players | groupby('team') %}
+    <div class="replay-team">
+    <table class="replay-table">
+        <caption>{{ t('replay.team', team=team) }}</caption>
+        <thead>
+            <tr>
+                <th>{{ t('replay.player') }}</th><th>{{ t('replay.vehicles') }}</th>
+                <th>{{ t('replay.score') }}</th>
+                <th title="{{ t('replay.kills_title') }}">{{ t('replay.kills') }}</th>
+                <th title="{{ t('replay.ai_kills_title') }}">{{ t('replay.ai_kills') }}</th>
+                <th>{{ t('replay.assists') }}</th>
+                <th title="{{ t('replay.captures_title') }}">{{ t('replay.captures') }}</th>
+                <th title="{{ t('replay.zone_damage_title') }}">{{ t('replay.zone_damage') }}</th>
+                <th>{{ t('replay.deaths') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in players %}
+            <tr{% if p.user_id == rp.author_user_id %} class="is-author"{% endif %}>
+                <td class="replay-player">{% if p.clan_tag %}<span class="replay-clan">{{ p.clan_tag }}</span> {% endif %}{{ p.name }}</td>
+                <td class="replay-vehicles">{% for v in p.vehicles.split(',') if v %}<span class="vehicle-chip">{{ v | vehicle }}</span>{% endfor %}</td>
+                <td>{{ p.score }}</td>
+                <td>{{ p.kills + p.ground_kills + p.naval_kills }}</td>
+                <td>{{ p.ai_kills + p.ai_ground_kills + p.ai_naval_kills }}</td>
+                <td>{{ p.assists }}</td>
+                <td>{{ p.capture_zone }}</td>
+                {# 游戏战绩表按千显示，保留三位有效数字。 #}
+                <td>{{ '%.3g' | format(p.damage_zone / 1000) }}</td>
+                <td>{{ p.deaths }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% endfor %}
+</div>

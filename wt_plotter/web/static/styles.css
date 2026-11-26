@@ -1470,3 +1470,96 @@ input:is([type="range"], [type="checkbox"]) {
   margin: 0;
   min-height: 1.2em;
 }
+
+/* 加载遮罩 */
+.page-loading {
+  position: fixed;
+  inset: var(--header-height) 0 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(12, 14, 17, 0.72);
+  backdrop-filter: blur(2px);
+}
+
+.page-loading[hidden] {
+  display: none;
+}
+
+.page-loading-box {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.9rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 历史战局的录像战绩下拉栏 */
+.btn-scoreboard {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.6rem;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.btn-scoreboard:hover,
+.btn-scoreboard[aria-expanded="true"] {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.btn-scoreboard svg {
+  transition: transform 0.15s;
+}
+
+.btn-scoreboard[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.match-scoreboard {
+  padding: 0.5rem 0.75rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.match-scoreboard .replay-source {
+  margin: 0 0 0.5rem;
+}
+
+.replay-table tr.is-author td {
+  color: var(--accent);
+}
+
+.replay-result.success {
+  color: var(--live);
+}
+
+.replay-result.fail {
+  color: var(--kill);
+}

@@ -12,6 +12,11 @@ from wt_plotter.replay import importer, messages, tracks, wrpl
 from wt_plotter.storage import db
 
 
+def position_dicts(bundle):
+    """把位置的行数组还原成字典，便于断言。"""
+    return [dict(zip(bundle["fields"], row)) for row in bundle["rows"]]
+
+
 LEVEL = "levels/air_israel.bin"
 MPI = wrpl.PACKET_MPI
 
@@ -72,7 +77,7 @@ def test_known_bounds_keep_map_and_project(conn, tmp_path):
     db.save_map_bounds(conn, "air_israel_map", (0.0, 0.0, 10000.0, 10000.0))
     match_id = importer.import_replay(conn, load(tmp_path, "a.wrpl"), "a", "en")
     assert lookup_map(db.get_match(conn, match_id).map_hash).map_id == "air_israel_map"
-    first = db.get_positions_bundle(conn, match_id, 0)["positions"][0]
+    first = position_dicts(db.get_positions_bundle(conn, match_id, 0))[0]
     assert (first["x"], first["y"]) == (0.1, 0.9)
 
 
@@ -166,5 +171,5 @@ def test_ai_team_follows_kills_across_uid_run(tmp_path):
 def test_air_tracks_carry_player_name_and_vehicle(conn, tmp_path):
     """Alice 击落过 Bob，载具已知；Bob 没出过手，靠首辆载具的单位号偏移认出名字，载具未知。"""
     match_id = importer.import_replay(conn, load(tmp_path, "a.wrpl"), "a", "en")
-    positions = db.get_positions_bundle(conn, match_id, 0)["positions"]
+    positions = position_dicts(db.get_positions_bundle(conn, match_id, 0))
     assert {(p["unit_name"], p["unit_vehicle"]) for p in positions} == {("Alice", "yak-3"), ("Bob", None)}
