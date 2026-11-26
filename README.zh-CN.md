@@ -6,7 +6,7 @@
 
 *（重建自 [ElBartt/WarThunder-Plotter](https://github.com/ElBartt/WarThunder-Plotter)，MIT 协议）*
 
-本地优先的战场遥测记录与浏览器回放工具。仅读取游戏客户端自带的 `localhost:8111` 网页小地图接口，不读内存、不改游戏文件，所有录像均保存在本机。
+本地优先的战场遥测记录与浏览器回放工具。只读取游戏客户端自带的 `localhost:8111` 网页小地图接口和游戏自己的 `.wrpl` 录像，不读内存、不改游戏文件，所有记录均保存在本机。
 
 [![Release](https://img.shields.io/github/v/release/EvergardenRoxy/WarThunder-Plotter-Plus?label=release&color=e5b82e)](https://github.com/EvergardenRoxy/WarThunder-Plotter-Plus/releases)
 [![License](https://img.shields.io/badge/license-MIT-3b82f6)](LICENSE)
@@ -57,8 +57,8 @@ WarThunderPlotterPlus-portable.exe capture    只采集，不开网页
 - **[专注模式与视角控制](docs/zh/viewer.md#侧栏设置)** — 支持一键折叠侧栏（`B`）、视角「跟随自己」（`F`，手动拖拽自动解除）、滚轮缩放与平移（50%～500%）、底图压暗强度调节（0%～60%）以及 11 档紧凑倍速器（`0.5×`～`50×`）。
 - **[出击时间线与空地底图切换](docs/zh/viewer.md#地面图与空战图)** — 播放条下方展示我方实际出击载具胶囊（自动跳过选车界面误点），点击可直达换车时刻；包含空中视角的陆战对局可在「地面图 / 空战图」间随时切换。
 - **[战斗播报筛选与联动](docs/zh/viewer.md#战斗播报)** — 完整记录 `/hudmsg` 击毁、击落、起火、嘉奖、核弹与离场消息，支持「全部 / 战果 / 嘉奖 / 隐藏离开」筛选，时间轴按事件类型着不同色标，点击播报直达对应时刻。
-- **[历史战局一览](docs/zh/viewer.md#历史战局)** — 按本地开局日期分组，展示地图缩略图、本局实际出击载具、`☢ 核弹` 徽章与对齐的「开局 / 时长」列，并支持地图名、日期和战局类型组合筛选。
-- **[游戏录像导入](docs/zh/replay.md)** — 导入本地 `.wrpl` 录像，或按场次号下载服务器录像，为比赛补上战报：全体玩家的队伍、得分、击杀与载具，玩家击杀记录和聊天；录像还能还原飞机（空战）或地面载具与飞机（陆战）的轨迹，没有 8111 记录的比赛也能回放，悬停单位可看玩家名与载具。
+- **[历史战局一览](docs/zh/viewer.md#历史战局)** — 按本地开局日期分组，展示地图缩略图、本局实际出击载具与 `☢ 核弹` 徽章，支持地图名、日期和战局类型组合筛选；有录像的比赛可展开「战绩」查看两队成绩。
+- **[游戏录像导入](docs/zh/replay.md)** — 导入游戏录像文件夹、任意 `.wrpl` 文件，或按场次号下载服务器录像，自动关联同一场的 8111 记录，为比赛补上战报：全体玩家的队伍、得分、击杀与载具，玩家击杀记录和聊天。录像还能还原陆、空、海三种战斗的轨迹（含 8111 看不到的敌方单位），没有 8111 记录的比赛也能回放，悬停单位可看玩家名与载具。
 - **中英文双语界面** — 顶栏随时切换中英文，首次启动自动跟随 Windows 系统显示语言。
 
 ---
@@ -100,11 +100,14 @@ WarThunderPlotterPlus-portable.exe capture    只采集，不开网页
 flowchart LR
     WT["《战争雷霆》本机接口 (localhost:8111)"] --> Capture["后台采集线程"]
     Capture --> SQLite[("本机 SQLite + 地图 PNG")]
+    Replay["游戏录像 (.wrpl)"] --> Importer["录像导入"]
+    Importer --> SQLite
     SQLite --> Web["Flask 本地服务 (127.0.0.1:5000)"]
     Web --> Browser["Canvas 查看器与回放页面"]
 ```
 
 - **纯只读本机遥测**：仅轮询游戏内置网页地图的 `map_info.json`、`map_obj.json`、`map.img`、`indicators` 与 `hudmsg`。
+- **录像只读解析**：读取游戏录像目录里的 `.wrpl`；只有按场次号下载服务器录像时才联网。
 - **零侵入、纯本地**：不读取进程内存、不修改任何游戏文件，所有记录均保存在本地 `data/matches.db` 与 `data/maps/` 中。
 
 ---
@@ -136,6 +139,7 @@ flowchart LR
 
 - **整体重建阶段（`v0.1`～`v0.4.6`）**：在 `ElBartt/WarThunder-Plotter` 基础上从零重建——**Claude Fable 5.2** 负责架构设计、数据核对与代码复核，**Claude Opus 5.5** 完成了核心功能实现。
 - **界面升级、交互增强与缺陷修复（`v0.4.7+`）**：**Google Antigravity (Gemini)** 参与完成了战术 HUD 深色视觉升级、历史战局缩略图/载具标签/列头注释、专注模式侧栏折叠、视角跟随、底图压暗调节、紧凑倍速器与复盘快捷键、出击时间线、战报语义筛选（含中文零宽空格兼容）、核弹与空战视角识别修复、本人图标变蓝/双标修复，以及配套测试与文档更新。
+- **游戏录像支持（`v0.5+`）**：**Claude Opus 5.5** 完成了 `.wrpl` 录像格式分析、轨迹还原与战报，并用实战的 8111 记录逐场核对。
 
 ---
 

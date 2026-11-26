@@ -9,7 +9,7 @@ from flask import Flask, g, jsonify, render_template, request, send_from_directo
 from wt_plotter.capture.capturer import Capturer
 from wt_plotter.config import APP_SETTINGS, CAPTURE_DEFAULTS, CAPTURE_FILTERS, PATHS
 from wt_plotter.i18n import LANGUAGES, get_language, language_names, load_catalog, set_language, translate
-from wt_plotter.maps.lookup import image_key, is_ground_battle, level_map_id, lookup_map
+from wt_plotter.maps.lookup import image_key, is_ground_battle, is_naval_battle, level_map_id, lookup_map
 from wt_plotter.maps.table import BattleType, UNKNOWN_MAP
 from wt_plotter.replay import download, importer
 from wt_plotter.storage import db
@@ -93,8 +93,12 @@ def create_app(db_path: Path, maps_dir: Path, settings_path: Path, capturer: Cap
             if info["map_id"] == UNKNOWN_MAP.map_id and map_id:
                 info.update(map_id=map_id, map_name=t(f"map.{map_id}"))
             if info["battle_type"] == BattleType.UNKNOWN.value:
-                ground = is_ground_battle(battle_class)
-                info["battle_type"] = (BattleType.GROUND if ground else BattleType.AIR).value
+                if is_ground_battle(battle_class):
+                    info["battle_type"] = BattleType.GROUND.value
+                elif is_naval_battle(battle_class):
+                    info["battle_type"] = BattleType.NAVAL.value
+                else:
+                    info["battle_type"] = BattleType.AIR.value
         nuke = bool(match.nuke_detected) or (
             match.id in nuke_ids if nuke_ids is not None else db.has_nuke_event(connection(), match.id)
         )

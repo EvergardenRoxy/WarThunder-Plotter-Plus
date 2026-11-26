@@ -2,6 +2,11 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.5.2
+
+- Naval battle replays now rebuild ship tracks (plus aircraft), including enemy ships 8111 never shows. Replay-only naval matches use the naval map and are listed as naval battles. Matches already opened are parsed again the next time they are opened.
+- Recognized three more maps: Falklands (air), the updated Karpaty Passage ground map, and Mediterranean Port (naval).
+
 ## 0.5.1
 
 - Match history opens much faster (about 3x on a large database) and shows a loading overlay while pages load; opening a long replay now draws tracks in a couple of seconds instead of showing an empty map. The match data the viewer downloads is about 60% smaller.

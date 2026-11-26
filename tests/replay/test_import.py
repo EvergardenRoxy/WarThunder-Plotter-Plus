@@ -110,6 +110,7 @@ def test_level_map_id():
     assert level_map_id("levels/avg_normandy.bin", "air_ground_Dom") == "avg_normandy_tankmap"
     assert level_map_id("levels/avg_egypt_sinai.bin", "base_dom") == "avg_egypt_sinai_map"
     assert level_map_id("levels/air_israel.bin", "base_dom") == "air_israel_map"
+    assert level_map_id("levels/avn_fiji.bin", "air_naval_Dom") == "avn_fiji_tankmap"
     assert level_map_id("levels/nowhere.bin", "base_dom") is None
     assert hash_for_map_id("nowhere") is None
 

@@ -16,7 +16,7 @@ import zstandard
 
 from wt_plotter.config import REPLAY_SETTINGS
 from wt_plotter.i18n import translate
-from wt_plotter.maps.lookup import hash_for_map_id, image_key, is_ground_battle, level_map_id
+from wt_plotter.maps.lookup import hash_for_map_id, image_key, is_ground_battle, is_naval_battle, level_map_id
 from wt_plotter.replay import aircraft, blk, ground, messages, positions, tracks, wrpl
 from wt_plotter.storage import db
 
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 SERVER_PART = "0000.wrpl"
 # 完整解析的版本，解析逻辑有变化时加一；打开比赛时会重新解析版本更旧的录像。只做了轻量导入的记为 0。
-PARSER_VERSION = 5
+PARSER_VERSION = 6
 SUMMARY_VERSION = 0
 # 结果块里空位的 player 块（没有名字、队伍 0）用这个 userId。
 EMPTY_SLOT_USER_ID = "-1"
@@ -192,14 +192,14 @@ def _kill_events(kills: list[db.ReplayKill], lang: str) -> list[db.EventRecord]:
 
 def _write_tracks(
     conn: sqlite3.Connection, match_id: int, unit_tracks: list[tracks.UnitTrack], roster: _Roster,
-    kills: list[db.ReplayKill], level_hash: str | None, is_ground: bool, lang: str,
+    kills: list[db.ReplayKill], level_hash: str | None, surface_icon: str | None, lang: str,
 ) -> None:
     match = db.get_match(conn, match_id)
     map_hash = match.map_hash or level_hash
     bounds = db.get_map_bounds(conn, image_key(map_hash)) if map_hash else None
     ticks = positions.build_ticks(
         unit_tracks, roster.relations(unit_tracks), roster.labels(unit_tracks), roster.vehicle(),
-        bounds or positions.extent_bounds(unit_tracks), is_ground,
+        bounds or positions.extent_bounds(unit_tracks), surface_icon,
     )
     events = _kill_events(kills, lang)
     # 没有地图范围就没法把轨迹画到底图上，宁可不显示底图；采集过这张图后重新导入会补上。
@@ -210,12 +210,21 @@ def _write_tracks(
     db.add_events(conn, match_id, events)
 
 
-def _ground_battle_tracks(packets: list, battle: messages.Battle) -> list[tracks.UnitTrack]:
-    """陆战：地面单位和飞机。地面单位各自的采样时刻不同，全部重采样到统一的帧上才能一帧画出所有单位。"""
+def _surface_battle_tracks(packets: list, battle: messages.Battle) -> list[tracks.UnitTrack]:
+    """陆战、海战：地面单位（舰船也走地面同步）和飞机。地面单位各自的采样时刻不同，全部重采样到统一的帧上才能一帧画出所有单位。"""
     step, gap = REPLAY_SETTINGS.ground_frame_interval, REPLAY_SETTINGS.ground_max_gap
     units = ground.read_tracks(packets, battle) + aircraft.read_tracks(packets, battle)
     resampled = [tracks.UnitTrack(t.eid, tracks.resample(t.points, step, gap), t.air) for t in units]
     return [track for track in resampled if track.points]
+
+
+def _surface_icon(battle_class: str) -> str | None:
+    """地面单位的图标：陆战画坦克、海战画舰船；空战没有地面单位轨迹，返回 None。"""
+    if is_ground_battle(battle_class):
+        return positions.GROUND_ICON
+    if is_naval_battle(battle_class):
+        return positions.SHIP_ICON
+    return None
 
 
 def _link_match(conn: sqlite3.Connection, header: wrpl.Header, duration: float) -> tuple[int, str | None]:
@@ -276,8 +285,10 @@ def import_replay(conn: sqlite3.Connection, replay: wrpl.Replay, source: str, la
     duration = replay.results.get("timePlayed")
     author_user_id = _author(conn, header, replay.results)
     roster = _Roster(battle, replay.results, author_user_id)
-    is_ground = is_ground_battle(header.battle_class)
-    unit_tracks = _ground_battle_tracks(packets, battle) if is_ground else aircraft.read_tracks(packets, battle)
+    surface_icon = _surface_icon(header.battle_class)
+    unit_tracks = (
+        _surface_battle_tracks(packets, battle) if surface_icon else aircraft.read_tracks(packets, battle)
+    )
 
     # 先算完再写库，算到一半出错不会留下空比赛或半套数据。
     used = {str(battle.slots[slot]): vehicles for slot, vehicles in battle.vehicles().items() if slot in battle.slots}
@@ -305,7 +316,7 @@ def import_replay(conn: sqlite3.Connection, replay: wrpl.Replay, source: str, la
         db.count_positions(conn, match_id) == 0 if writer is None else int(header.is_server) >= writer
     )
     if write:
-        _write_tracks(conn, match_id, unit_tracks, roster, kills, level_hash, is_ground, lang)
+        _write_tracks(conn, match_id, unit_tracks, roster, kills, level_hash, surface_icon, lang)
 
     record = _record(header, replay.results, duration, author_user_id, write, source, PARSER_VERSION)
     db.save_replay(conn, match_id, record, players, kills, chat)
