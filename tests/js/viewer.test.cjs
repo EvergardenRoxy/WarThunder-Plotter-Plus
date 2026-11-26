@@ -25,6 +25,12 @@ function makeViewer(context, properties = {}) {
     }, properties);
 }
 
+// 按接口格式（列名 + 行数组）打包位置。
+function positionBundle(ticks, positions) {
+    const fields = [...new Set(positions.flatMap(Object.keys))];
+    return { ticks, fields, rows: positions.map(pos => fields.map(field => pos[field])) };
+}
+
 test('categorizes team colors, map objects and gray markers', () => {
     const viewer = makeViewer(load('tracks.js', 'viewer.js'));
     for (const [color, expected] of [
@@ -54,10 +60,10 @@ test('discards out-of-range display coordinates while advancing the cursor', asy
     const position = { tick_id: 1, x: 0.5, y: 0.5, type: 'ground_model', icon: 'MediumTank', color: '#174DFF' };
     context.fetch = async () => ({
         ok: true,
-        json: async () => ({
-            ticks: [{ id: 1, timestamp: 1000 }, { id: 2, timestamp: 1500 }],
-            positions: [position, { ...position, x: 1.4 }, { ...position, tick_id: 2, x_ground: -0.2, y_ground: 0.5 }],
-        }),
+        json: async () => positionBundle(
+            [{ id: 1, timestamp: 1000 }, { id: 2, timestamp: 1500 }],
+            [position, { ...position, x: 1.4 }, { ...position, tick_id: 2, x_ground: -0.2, y_ground: 0.5 }],
+        ),
     });
     await viewer._loadPositions();
     assert.equal(viewer.positionCount, 3);
@@ -278,12 +284,12 @@ test('drops unit icons that are not displayed', async () => {
     const base = { tick_id: 1, x: 0.5, y: 0.5, type: 'ground_model', color: '#174DFF', is_poi: 0 };
     context.fetch = async () => ({
         ok: true,
-        json: async () => ({
-            ticks: [{ id: 1, timestamp: 1000 }],
-            positions: ['Artillery', 'Pillbox', 'Airdefence', 'Mystery', 'MediumTank', 'Player']
+        json: async () => positionBundle(
+            [{ id: 1, timestamp: 1000 }],
+            ['Artillery', 'Pillbox', 'Airdefence', 'Mystery', 'MediumTank', 'Player']
                 .map(icon => ({ ...base, icon }))
                 .concat({ ...base, type: 'respawn_base_tank', icon: 'respawn_base_tank', is_poi: 1 }),
-        }),
+        ),
     });
     await viewer._loadPositions();
     assert.deepEqual(viewer.positions.map(pos => pos.icon), ['MediumTank', 'Player']);
@@ -297,9 +303,9 @@ test('keeps naval ship icons and draws naval aircraft on naval base maps', async
     const base = { tick_id: 1, x: 0.5, y: 0.5, type: 'ground_model', color: '#174DFF', is_poi: 0 };
     context.fetch = async () => ({
         ok: true,
-        json: async () => ({
-            ticks: [{ id: 1, timestamp: 1000, is_player_air_view: 0 }],
-            positions: [
+        json: async () => positionBundle(
+            [{ id: 1, timestamp: 1000, is_player_air_view: 0 }],
+            [
                 { ...base, icon: 'Boat' },
                 { ...base, icon: 'Destroyer', color: '#67D756' },
                 { ...base, icon: 'MissileDestroyer' },
@@ -308,7 +314,7 @@ test('keeps naval ship icons and draws naval aircraft on naval base maps', async
                 { ...base, icon: 'Battleship' },
                 { ...base, type: 'aircraft', icon: 'Bomber', color: '#39D921' },
             ],
-        }),
+        ),
     });
     await viewer._loadPositions();
     assert.deepEqual(
@@ -323,10 +329,10 @@ test('draws aircraft on ground maps only when tracks come from a replay', async 
     const base = { tick_id: 1, x: 0.5, y: 0.5, color: '#174DFF', is_poi: 0 };
     context.fetch = async () => ({
         ok: true,
-        json: async () => ({
-            ticks: [{ id: 1, timestamp: 1000, is_player_air_view: 0 }],
-            positions: [{ ...base, type: 'ground_model', icon: 'MediumTank' }, { ...base, type: 'aircraft', icon: 'Fighter' }],
-        }),
+        json: async () => positionBundle(
+            [{ id: 1, timestamp: 1000, is_player_air_view: 0 }],
+            [{ ...base, type: 'ground_model', icon: 'MediumTank' }, { ...base, type: 'aircraft', icon: 'Fighter' }],
+        ),
     });
     for (const [replayTracks, count] of [[false, 1], [true, 2]]) {
         const viewer = makeViewer(context, { battleType: 'ground', replayTracks });

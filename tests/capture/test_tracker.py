@@ -14,6 +14,11 @@ from wt_plotter.maps.table import MAPS, UNKNOWN_MAP
 from wt_plotter.storage import db
 
 
+def position_dicts(bundle):
+    """把位置的行数组还原成字典，便于断言。"""
+    return [dict(zip(bundle["fields"], row)) for row in bundle["rows"]]
+
+
 GROUND = "avg_normandy_tankmap"
 AIR = "air_normandy_map"
 
@@ -79,7 +84,7 @@ def test_respawn_poi_once(setup, conn, obj):
     match.tick(1, True, None, objects)
     bundle = db.get_positions_bundle(conn, match.match_id, 0)
     ticks = {tick["id"]: tick["timestamp"] for tick in bundle["ticks"]}
-    assert [(p["type"], ticks[p["tick_id"]]) for p in bundle["positions"]] == [
+    assert [(p["type"], ticks[p["tick_id"]]) for p in position_dicts(bundle)] == [
         ("respawn_base_tank", 0), ("capture_zone", 0), ("capture_zone", 1000),
     ]
 
@@ -168,7 +173,7 @@ def test_air_view_transform_applied(setup, conn, obj, zone_frames):
     )
     bundle = db.get_positions_bundle(conn, stored.id, 1000)
     assert bundle["ticks"][0]["is_player_air_view"] == 1
-    for position, expected in zip(bundle["positions"], ground * 2, strict=True):
+    for position, expected in zip(position_dicts(bundle), ground * 2, strict=True):
         assert (position["x_ground"], position["y_ground"]) == pytest.approx(expected)
 
 
@@ -181,7 +186,7 @@ def test_plane_on_ground_frame_is_not_air_view(setup, conn, obj, zone_frames):
     bundle = db.get_positions_bundle(conn, match.match_id, 1000)
     assert bundle["ticks"][0]["is_player_air"] == 1
     assert bundle["ticks"][0]["is_player_air_view"] == 0
-    assert all(position["x_ground"] is None for position in bundle["positions"])
+    assert all(position["x_ground"] is None for position in position_dicts(bundle))
 
 
 def test_air_view_persists_without_air_defence(setup, conn, zone_frames):
@@ -228,7 +233,7 @@ def test_naval_respawn_pois_deduplicated(setup, conn, obj):
     ]
     match.tick(0, True, None, objects)
     match.tick(1, True, None, objects)
-    positions = db.get_positions_bundle(conn, match.match_id, 0)["positions"]
+    positions = position_dicts(db.get_positions_bundle(conn, match.match_id, 0))
     pois = [p for p in positions if p["is_poi"] == 1]
     assert sorted(p["type"] for p in pois) == ["respawn_base_bomber", "respawn_base_destroyer", "respawn_base_ship"]
     assert sum(1 for p in positions if p["icon"] == "LightCruiser") == 2
@@ -286,7 +291,7 @@ def test_late_static_poi_is_saved_once(setup, conn, obj):
     match.tick(0, True, {"army": "tank"}, [zone])
     match.tick(1, True, {"army": "tank"}, [zone, respawn])
     match.tick(2, True, {"army": "tank"}, [zone, respawn])
-    positions = db.get_positions_bundle(conn, match.match_id, 0)["positions"]
+    positions = position_dicts(db.get_positions_bundle(conn, match.match_id, 0))
     assert [p["type"] for p in positions].count("respawn_base_tank") == 1
     assert [p["type"] for p in positions].count("capture_zone") == 3
 
@@ -302,8 +307,8 @@ def test_return_to_ground_is_not_air_view(setup, conn, obj):
     bundle = db.get_positions_bundle(conn, match.match_id, 0)
     assert [tick["is_player_air_view"] for tick in bundle["ticks"]] == [0, 1, 0]
     # 空中那一帧换算回地面坐标，回到地面后不再换算。
-    assert bundle["positions"][4]["x_ground"] == pytest.approx(0.2, abs=1e-4)
-    assert all(p["x_ground"] is None for p in bundle["positions"][8:])
+    assert position_dicts(bundle)[4]["x_ground"] == pytest.approx(0.2, abs=1e-4)
+    assert all(p["x_ground"] is None for p in position_dicts(bundle)[8:])
 
 
 def test_late_capture_zones_keep_ground_view(setup, conn, obj, zone_frames):

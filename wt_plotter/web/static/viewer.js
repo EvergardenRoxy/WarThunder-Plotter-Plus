@@ -137,12 +137,8 @@ class MatchViewer {
         this._resize();
         this._loadMap();
         this._setupInteractions();
-        if (this.isLive) {
-            this._startPolling();
-        } else {
-            this._loadPositions();
-            this._loadEvents();
-        }
+        // 首轮数据加载完成后兑现，页面据此关掉加载遮罩。
+        this.loaded = this.isLive ? this._startPolling() : Promise.all([this._loadPositions(), this._loadEvents()]);
         // 布局网格变化不一定触发窗口 resize，直接观察画布容器。
         new ResizeObserver(() => this._resize()).observe(this.canvas.parentElement);
     }
@@ -375,14 +371,17 @@ class MatchViewer {
         try {
             const resp = await fetch(`/api/match/${this.matchId}/positions?since=${this.lastTimestamp}`);
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const { ticks = [], positions = [] } = await resp.json();
+            // 位置是列名 + 行数组（体积小），这里还原成对象。
+            const { ticks, fields, rows } = await resp.json();
 
             if (ticks.length > 0) {
                 const tickMap = new Map(ticks.map(tick => [tick.id, tick]));
                 for (const tick of ticks) this.ticks.push(tick);
                 this.maxTimestamp = Math.max(this.maxTimestamp, ticks.at(-1).timestamp);
                 this.lastTimestamp = this.maxTimestamp + 1;
-                for (const pos of positions) {
+                for (const row of rows) {
+                    const pos = {};
+                    fields.forEach((field, i) => { pos[field] = row[i]; });
                     const tick = tickMap.get(pos.tick_id);
                     if (!tick) continue;
 
@@ -435,7 +434,7 @@ class MatchViewer {
 
     _startPolling() {
         this.polling = true;
-        this._poll();
+        return this._poll();
     }
 
     // 串行轮询：上一轮请求结束后才安排下一轮，同一时刻只有一个位置请求。

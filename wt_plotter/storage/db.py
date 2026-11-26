@@ -301,7 +301,10 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_events_match_ts ON events(match_id, timestamp_ms);
         CREATE INDEX IF NOT EXISTS idx_replays_match ON replays(match_id);
         CREATE INDEX IF NOT EXISTS idx_positions_match ON positions(match_id);
-        CREATE INDEX IF NOT EXISTS idx_positions_tick ON positions(tick_id);
+        -- 首页按 tick 查自机图标、按类型查海战出生点；(tick_id, icon_id) 取代早期只有 tick_id 的索引。
+        DROP INDEX IF EXISTS idx_positions_tick;
+        CREATE INDEX IF NOT EXISTS idx_positions_tick_icon ON positions(tick_id, icon_id);
+        CREATE INDEX IF NOT EXISTS idx_positions_type ON positions(type_id);
         CREATE INDEX IF NOT EXISTS idx_ticks_match_ts ON ticks(match_id, timestamp_ms);
     """)
     # 早期建的表缺少后加的列。
@@ -310,6 +313,8 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE replays ADD COLUMN parser_version INTEGER NOT NULL DEFAULT 0")
     if "parse_error" not in columns:
         conn.execute("ALTER TABLE replays ADD COLUMN parse_error TEXT")
+    # 早期导入把结果块里的空位也存成了玩家。
+    conn.execute("DELETE FROM replay_players WHERE user_id = '-1'")
     columns = {row["name"] for row in conn.execute("PRAGMA table_info(positions)")}
     if "unit_name_id" not in columns:
         conn.execute("ALTER TABLE positions ADD COLUMN unit_name_id INTEGER")
@@ -469,40 +474,44 @@ def get_all_matches(conn: sqlite3.Connection) -> list[Match]:
     return [Match(**dict(row)) for row in rows]
 
 
+POSITION_FIELDS = (
+    "tick_id", "x", "y", "color", "type", "icon", "is_poi", "x_ground", "y_ground", "unit_name", "unit_vehicle",
+)
+_TICK_FIELDS = ("id", "timestamp", "army_type", "vehicle_type", "is_player_air", "is_player_air_view")
+
+
 def get_positions_bundle(conn: sqlite3.Connection, match_id: int, since_ms: int) -> dict:
+    """位置用列名 + 行数组返回：长比赛有几十万条，逐条字典的生成和 JSON 体积都太大。"""
+    # 先取 tick，位置只取到最后一个 tick 为止：两次查询之间采集器写入的新 tick 留给下一轮。
+    ticks = [dict(zip(_TICK_FIELDS, tick)) for tick in conn.execute(
+        """
+        SELECT tk.id, tk.timestamp_ms, at.value, vt.value, tk.is_player_air, tk.is_player_air_view
+        FROM ticks tk
+        LEFT JOIN enum_army_types at ON at.id = tk.army_type_id
+        LEFT JOIN enum_vehicle_types vt ON vt.id = tk.vehicle_type_id
+        WHERE tk.match_id = ? AND tk.timestamp_ms >= ?
+        ORDER BY tk.timestamp_ms, tk.id
+        """,
+        (match_id, since_ms),
+    )]
     rows = conn.execute(
         """
         SELECT
-            p.id, p.tick_id, p.x, p.y, c.value AS color, t.value AS type, i.value AS icon,
-            p.is_poi, p.x_ground, p.y_ground, un.value AS unit_name, uv.value AS unit_vehicle,
-            tk.timestamp_ms AS timestamp, at.value AS army_type, vt.value AS vehicle_type,
-            tk.is_player_air, tk.is_player_air_view
+            p.tick_id, p.x, p.y, c.value, t.value, i.value,
+            p.is_poi, p.x_ground, p.y_ground, un.value, uv.value
         FROM positions p
         JOIN ticks tk ON tk.id = p.tick_id
         LEFT JOIN enum_colors c ON c.id = p.color_id
         LEFT JOIN enum_types t ON t.id = p.type_id
         LEFT JOIN enum_icons i ON i.id = p.icon_id
-        LEFT JOIN enum_army_types at ON at.id = tk.army_type_id
-        LEFT JOIN enum_vehicle_types vt ON vt.id = tk.vehicle_type_id
         LEFT JOIN enum_unit_names un ON un.id = p.unit_name_id
         LEFT JOIN enum_vehicle_types uv ON uv.id = p.unit_vehicle_id
-        WHERE p.match_id = ? AND tk.timestamp_ms >= ?
+        WHERE p.match_id = ? AND tk.timestamp_ms >= ? AND p.tick_id <= ?
         ORDER BY tk.timestamp_ms, p.id
         """,
-        (match_id, since_ms),
+        (match_id, since_ms, max((tick["id"] for tick in ticks), default=0)),
     )
-    position_fields = (
-        "id", "tick_id", "x", "y", "color", "type", "icon", "is_poi", "x_ground", "y_ground", "unit_name", "unit_vehicle",
-    )
-    tick_fields = ("timestamp", "army_type", "vehicle_type", "is_player_air", "is_player_air_view")
-    positions = []
-    ticks = {}
-    for row in rows:
-        tick_id = row["tick_id"]
-        if tick_id not in ticks:
-            ticks[tick_id] = {"id": tick_id, **{field: row[field] for field in tick_fields}}
-        positions.append({field: row[field] for field in position_fields})
-    return {"positions": positions, "ticks": list(ticks.values())}
+    return {"ticks": ticks, "fields": POSITION_FIELDS, "rows": [tuple(row) for row in rows]}
 
 
 def first_sortie_army(conn: sqlite3.Connection, match_id: int, placeholders: tuple[str, ...]) -> str | None:
@@ -534,8 +543,7 @@ def get_match_vehicles(conn: sqlite3.Connection, placeholders: tuple[str, ...]) 
         WHERE vt.value != '' AND vt.value NOT IN ({marks})
           AND EXISTS (
               SELECT 1 FROM positions p
-              JOIN enum_icons i ON i.id = p.icon_id
-              WHERE p.tick_id = tk.id AND i.value = 'Player'
+              WHERE p.tick_id = tk.id AND p.icon_id IN (SELECT id FROM enum_icons WHERE value = 'Player')
           )
         GROUP BY tk.match_id, vt.value
         ORDER BY tk.match_id, MIN(tk.timestamp_ms), MIN(tk.id)
@@ -557,19 +565,19 @@ def has_air_view(conn: sqlite3.Connection, match_id: int) -> bool:
     return row is not None
 
 
-def has_naval_spawn(conn: sqlite3.Connection, match_id: int, spawn_types: tuple[str, ...]) -> bool:
-    """检查比赛是否包含海战出生点，用于未知地图的战局类型兜底。"""
+def get_naval_spawn_match_ids(conn: sqlite3.Connection, spawn_types: tuple[str, ...]) -> set[int]:
+    """有海战出生点的比赛，用于未知地图的战局类型兜底。"""
     marks = ", ".join("?" * len(spawn_types))
-    row = conn.execute(
-        f"""
-        SELECT 1 FROM positions p
-        JOIN enum_types t ON t.id = p.type_id
-        WHERE p.match_id = ? AND t.value IN ({marks})
-        LIMIT 1
-        """,
-        (match_id, *spawn_types),
-    ).fetchone()
-    return row is not None
+    rows = conn.execute(
+        f"SELECT DISTINCT match_id FROM positions WHERE type_id IN (SELECT id FROM enum_types WHERE value IN ({marks}))",
+        spawn_types,
+    )
+    return {row["match_id"] for row in rows}
+
+
+def get_position_counts(conn: sqlite3.Connection) -> dict[int, int]:
+    rows = conn.execute("SELECT match_id, COUNT(*) AS count FROM positions GROUP BY match_id")
+    return {row["match_id"]: row["count"] for row in rows}
 
 
 _NUKE_EVENT_SQL = "msg LIKE '%☢%' OR msg LIKE '%核%武%器%' OR LOWER(msg) LIKE '%nuclear%'"

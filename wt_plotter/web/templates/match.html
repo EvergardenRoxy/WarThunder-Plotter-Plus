@@ -2,6 +2,7 @@
 {% set heading = t('match.live_title') if is_live else t('match.title', id=match.id) %}
 {% block title %}{{ heading }} · {% endblock %}
 {% set body_class = 'match-page' %}
+{% set loading_text = t('viewer.loading_tracks') %}
 {% block content %}
 {% set filters = [
     ('player', '#faC81E', t('filter.player')), ('squad', '#67D756', t('filter.squad')),
@@ -205,44 +206,15 @@
     </aside>
 </div>
 {% if report %}
-{% set rp = report.replay %}
 <dialog id="replay-report" class="replay-report" aria-labelledby="replay-report-title">
     <header class="replay-report-head">
         <div>
             <h3 id="replay-report-title">{{ t('replay.title') }}</h3>
-            <span class="replay-source">{{ t('replay.server' if rp.is_server else 'replay.client') }} · {{ rp.mission }} · {{ (rp.duration * 1000) | int | clock }}</span>
             {% for e in report.errors %}<p class="replay-error">{{ t('replay.parse_failed', source=e.source, error=e.parse_error) }}</p>{% endfor %}
         </div>
         <button type="button" class="btn btn-secondary" data-close-report>{{ t('replay.close') }}</button>
     </header>
-    <div class="replay-teams">
-        {% for team, players in report.players | groupby('team') %}
-        <div class="replay-team">
-        <table class="replay-table">
-            <caption>{{ t('replay.team', team=team) }}</caption>
-            <thead>
-                <tr>
-                    <th>{{ t('replay.player') }}</th><th>{{ t('replay.vehicles') }}</th>
-                    <th title="{{ t('replay.kills_title') }}">{{ t('replay.kills') }}</th>
-                    <th title="{{ t('replay.ai_kills_title') }}">{{ t('replay.ai_kills') }}</th>
-                    <th>{{ t('replay.assists') }}</th><th>{{ t('replay.deaths') }}</th><th>{{ t('replay.score') }}</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for p in players %}
-                <tr>
-                    <td class="replay-player">{% if p.clan_tag %}<span class="replay-clan">{{ p.clan_tag }}</span> {% endif %}{{ p.name }}</td>
-                    <td class="replay-vehicles">{% for v in p.vehicles.split(',') if v %}<span class="vehicle-chip">{{ v | vehicle }}</span>{% endfor %}</td>
-                    <td>{{ p.kills + p.ground_kills + p.naval_kills }}</td>
-                    <td>{{ p.ai_kills + p.ai_ground_kills + p.ai_naval_kills }}</td>
-                    <td>{{ p.assists }}</td><td>{{ p.deaths }}</td><td>{{ p.score }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        </div>
-        {% endfor %}
-    </div>
+    {% include "_scoreboard.html" %}
     <div class="replay-lists">
         <section>
             <h4>{{ t('replay.kill_list') }}</h4>

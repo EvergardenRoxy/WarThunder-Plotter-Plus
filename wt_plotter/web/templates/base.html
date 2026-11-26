@@ -23,6 +23,13 @@
     <main class="container">
         {% block content %}{% endblock %}
     </main>
+    {# 加载遮罩：跳转页面时由 app.js 打开；查看页一开始就打开，轨迹载入后关闭。 #}
+    <div id="page-loading" class="page-loading" role="status"{% if not loading_text %} hidden{% endif %}>
+        <div class="page-loading-box">
+            <span class="spinner" aria-hidden="true"></span>
+            <span data-loading-text>{{ loading_text or t('viewer.loading') }}</span>
+        </div>
+    </div>
     <script>window.I18N = {{ catalog | tojson }};</script>
     <script src="{{ url_for('static', filename='i18n.js') }}"></script>
     {% block scripts %}{% endblock %}

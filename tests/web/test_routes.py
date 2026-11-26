@@ -1,4 +1,5 @@
 from contextlib import closing
+import io
 from threading import Event
 
 import pytest
@@ -367,6 +368,17 @@ def test_replay_report_api_and_dialog(client, conn, match_id):
     assert translate("en", "replay.badge") in client.get("/").get_data(as_text=True)
 
 
+def test_scoreboard_fragment_for_history_dropdown(client, conn, match_id):
+    assert client.get(f"/match/{match_id}/scoreboard").status_code == 404
+    db.end_match(conn, match_id)
+    _save_replay(conn, match_id)
+    html = client.get(f"/match/{match_id}/scoreboard").get_data(as_text=True)
+    assert "Alice" in html and ">900<" in html and "normandy_Dom" in html
+    index = client.get("/").get_data(as_text=True)
+    assert f'aria-controls="scoreboard-{match_id}"' in index
+    assert f'data-url="/match/{match_id}/scoreboard"' in index
+
+
 def test_match_page_without_replay_has_no_report(client, match_id):
     html = client.get(f"/match/{match_id}").get_data(as_text=True)
     assert 'id="open-report"' not in html
@@ -388,6 +400,46 @@ def test_import_replays_endpoint(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_module.importer, "import_new", lambda conn, paths: ([1, 2], ["x.wrpl: boom"]))
     response = client.post("/api/replays/import", json={"path": str(tmp_path)})
     assert response.get_json() == {"imported": 2, "errors": ["x.wrpl: boom"]}
+
+
+def test_import_replays_endpoint_accepts_a_file(client, tmp_path, monkeypatch):
+    from wt_plotter.web import app as app_module
+
+    replay = tmp_path / "a.wrpl"
+    replay.write_bytes(b"")
+    calls = []
+    monkeypatch.setattr(app_module.importer, "import_new", lambda conn, paths: calls.append(paths) or ([], []))
+    client.post("/api/replays/import", json={"path": str(replay)})
+    assert calls == [[replay]]
+
+
+def test_upload_replays_endpoint(client, conn, match_id, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from wt_plotter.web import app as app_module
+
+    stored = []
+
+    def store(files, target):
+        stored.extend(files)
+        return sources, store_errors
+    monkeypatch.setattr(app_module.importer, "store_uploads", store)
+    monkeypatch.setattr(app_module.importer, "import_new", lambda conn, paths: ([1], []))
+
+    # 多份录像：返回导入数量和失败原因。
+    sources, store_errors = [tmp_path / "a", tmp_path / "b"], ["c.wrpl: bad"]
+    data = {"files": [(io.BytesIO(b"one"), "a.wrpl"), (io.BytesIO(b"two"), "b.wrpl")]}
+    response = client.post("/api/replays/upload", data=data, content_type="multipart/form-data")
+    assert response.get_json() == {"imported": 1, "errors": ["c.wrpl: bad"]}
+    assert stored == [("a.wrpl", b"one"), ("b.wrpl", b"two")]
+
+    # 只选了一份：直接给出它所在的比赛，便于跳转。
+    db.end_match(conn, match_id)
+    _save_replay(conn, match_id)
+    sources, store_errors = [tmp_path / "a"], []
+    monkeypatch.setattr(app_module.importer, "read_header", lambda path: SimpleNamespace(session_hex="00000000000072c4"))
+    data = {"files": [(io.BytesIO(b"one"), "a.wrpl")]}
+    response = client.post("/api/replays/upload", data=data, content_type="multipart/form-data")
+    assert response.get_json() == {"match_id": match_id}
 
 
 def test_download_replay_endpoint(client, tmp_path, monkeypatch):

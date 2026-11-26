@@ -2,6 +2,14 @@
 
 [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.5.1
+
+- Match history opens much faster (about 3x on a large database) and shows a loading overlay while pages load; opening a long replay now draws tracks in a couple of seconds instead of showing an empty map. The match data the viewer downloads is about 60% smaller.
+- Matches with a replay have a **Scores** dropdown in Match history: result, mission, duration and both teams' score, kills, AI kills, assists, captures, zone damage and deaths, without opening the match. The replay report uses the same table.
+- Import replays from anywhere: pick `.wrpl` files or a server replay folder in the browser (copies are kept in the data folder), or type the path of a single replay. Importing one replay opens its match directly.
+- Empty slots in a replay's results are no longer listed as players.
+- The first start after updating takes a few extra seconds to build new database indexes.
+
 ## 0.5.0
 
 - Added game replay import: read local `.wrpl` replays, or download server replays by session id or link. Each match gets a replay report with every player's team, squadron, score, kills, assists, deaths and vehicles, the player kill log (who destroyed whom with which vehicle), and chat.

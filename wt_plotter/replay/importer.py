@@ -27,6 +27,8 @@ SERVER_PART = "0000.wrpl"
 # 完整解析的版本，解析逻辑有变化时加一；打开比赛时会重新解析版本更旧的录像。只做了轻量导入的记为 0。
 PARSER_VERSION = 5
 SUMMARY_VERSION = 0
+# 结果块里空位的 player 块（没有名字、队伍 0）用这个 userId。
+EMPTY_SLOT_USER_ID = "-1"
 # 队伍 1、2 互为对方。
 OTHER_TEAM = {1: 2, 2: 1}
 # AI 单位号按队伍成段分配，相邻号相差不超过这么多算同一段；两队的段之间相差不超过 AI_PAIR_GAP。
@@ -58,6 +60,8 @@ def _players(results: blk.Block, used: dict[str, list[str]]) -> list[db.ReplayPl
     players = []
     for player in results.all("player"):
         user_id = player.get("userId")
+        if user_id == EMPTY_SLOT_USER_ID:
+            continue
         vehicles = list(dict.fromkeys(used.get(user_id, []) + lineups.get(user_id, [])))
         players.append(db.ReplayPlayer(
             user_id=user_id, name=player.get("name"), clan_tag=player.get("clanTag"),
@@ -339,6 +343,29 @@ def _files(source: Path) -> list[Path]:
 
 # 录像文件读不到、不完整（正在写入）或格式认不出时抛出的异常。
 REPLAY_ERRORS = (OSError, ValueError, struct.error, zstandard.ZstdError)
+# 手动导入的客户端录像存放的子目录（服务器录像和下载的一样按场次建目录）。
+LOCAL_UPLOAD_DIR = "local"
+
+
+def store_uploads(files: list[tuple[str, bytes]], target_dir: Path) -> tuple[list[Path], list[str]]:
+    """把手动选择的录像存进数据目录（打开比赛时还要读原文件），返回录像来源和逐个文件的失败原因。
+    服务器分段按场次放进同一目录，客户端录像按场次命名。"""
+    sources, errors = set(), []
+    for name, data in files:
+        try:
+            header = wrpl.parse_header(data[:wrpl.SETTINGS_OFFSET])
+        except REPLAY_ERRORS as error:
+            errors.append(f"{name}: {error!r}")
+            continue
+        if header.is_server:
+            path = target_dir / header.session_hex / f"{header.part_number:04d}.wrpl"
+            sources.add(path.parent)
+        else:
+            path = target_dir / LOCAL_UPLOAD_DIR / f"{header.session_hex}.wrpl"
+            sources.add(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    return sorted(sources), errors
 
 
 def import_new(conn: sqlite3.Connection, paths: list[Path]) -> tuple[list[int], list[str]]:

@@ -408,7 +408,7 @@
   "replay.none": "无",
   "replay.parse_failed": "录像解析失败，只显示了战绩：{source}（{error}）",
   "replay.import_title": "导入游戏录像",
-  "replay.folder": "本地录像文件夹（游戏目录下的 Replays）",
+  "replay.folder": "本地录像路径（游戏 Replays 文件夹、单个录像或服务器录像文件夹）",
   "replay.import_folder": "导入新录像",
   "replay.session": "服务器录像场次号或链接",
   "replay.download": "下载并导入",
@@ -421,5 +421,18 @@
   "error.replay_not_found": "这场比赛没有录像。",
   "replay.event_kill": "{killer}（{killer_vehicle}）击毁了 {victim}（{victim_vehicle}）",
   "replay.event_kill_unknown": "{killer}（{killer_vehicle}）击毁了一个目标",
-  "replay.event_crash": "{victim} 坠毁"
+  "replay.event_crash": "{victim} 坠毁",
+  "viewer.loading_tracks": "正在加载轨迹…",
+  "replay.captures": "占点",
+  "replay.captures_title": "占领的区域数",
+  "replay.zone_damage": "区域伤害",
+  "replay.zone_damage_title": "对基地等区域造成的伤害（千，与游戏战绩表相同）",
+  "replay.result_success": "胜利",
+  "replay.result_fail": "失败",
+  "replay.scoreboard": "战绩",
+  "replay.scoreboard_title": "展开录像里的战局战绩",
+  "replay.files": "选择录像文件（可多选）",
+  "replay.server_folder": "或选择服务器录像文件夹",
+  "replay.upload": "导入所选录像",
+  "replay.no_files": "没有选中 .wrpl 录像文件。"
 }
