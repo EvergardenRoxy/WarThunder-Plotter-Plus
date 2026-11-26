@@ -73,10 +73,16 @@ def is_ground_battle(battle_class: str) -> bool:
     return battle_class.startswith("air_ground")
 
 
+def is_naval_battle(battle_class: str) -> bool:
+    """录像的战斗类别：海战是 air_naval_*。"""
+    return battle_class.startswith("air_naval")
+
+
 def level_map_id(level: str, battle_class: str) -> str | None:
-    """关卡文件对应的地图 ID：陆战用坦克地图，空战用空战地图。"""
+    """关卡文件对应的地图 ID：陆战、海战用 8111 显示的 tankmap，空战用空战地图。"""
     name = Path(level).stem
     known = {info.map_id for info in MAPS.values()}
-    tankmap = [f"{name}_tankmap"] if is_ground_battle(battle_class) else []
+    surface = is_ground_battle(battle_class) or is_naval_battle(battle_class)
+    tankmap = [f"{name}_tankmap"] if surface else []
     candidates = tankmap + [f"{name}_map", name]
     return next((map_id for map_id in candidates if map_id in known), None)

@@ -6,7 +6,7 @@
 
 *(rebuilt from [ElBartt/WarThunder-Plotter](https://github.com/ElBartt/WarThunder-Plotter), MIT)*
 
-Local-first battlefield telemetry recorder and browser replay viewer. Reads only the game's built-in `localhost:8111` web map—never touches game memory or files, and keeps every recording on your machine.
+Local-first battlefield telemetry recorder and browser replay viewer. Reads only the game's built-in `localhost:8111` web map and the game's own `.wrpl` replays—never touches game memory or files, and keeps every recording on your machine.
 
 [![Release](https://img.shields.io/github/v/release/EvergardenRoxy/WarThunder-Plotter-Plus?label=release&color=e5b82e)](https://github.com/EvergardenRoxy/WarThunder-Plotter-Plus/releases)
 [![License](https://img.shields.io/badge/license-MIT-3b82f6)](LICENSE)
@@ -57,8 +57,8 @@ The web UI listens on `http://127.0.0.1:5000` by default (configurable via `--ho
 - **[Focus mode & camera controls](docs/en/viewer.md#sidebar-settings)** — Collapsible sidebar (`B`), **Follow me** camera lock (`F`, auto-releases on manual drag), smooth zoom/pan (50%–500%), adjustable map darkening (0%–60%), and compact 11-step playback speed (`0.5×`–`50×`).
 - **[Sortie timeline & air map switch](docs/en/viewer.md#ground-map-and-air-map)** — Clickable sortie pills below the playbar jump straight to each actual vehicle spawn (ignoring spawn-screen clicks). Combined-arms matches support toggling between **Ground** and **Air** maps.
 - **[Filterable battle feed](docs/en/viewer.md#battle-feed)** — Records `/hudmsg` combat, award, nuke, and departure messages with `All / Combat / Awards / Hide leaves` filters, color-coded timeline ticks, and click-to-seek synchronization.
-- **[Rich match history](docs/en/viewer.md#match-history)** — Grouped by local start date with map thumbnails, spawned sortie vehicle chips, nuke badges, aligned Start/Duration columns, and combined map/date/mode filtering.
-- **[Game replay import](docs/en/replay.md)** — Imports local `.wrpl` replays and downloads server replays by session id, adding a per-match report with every player's team, score, kills and vehicles, the player kill log, and chat. Replays also rebuild aircraft tracks (air battles) or ground unit and aircraft tracks (ground battles), so matches without an 8111 recording can be played back, with player names and vehicles on hover.
+- **[Rich match history](docs/en/viewer.md#match-history)** — Grouped by local start date with map thumbnails, spawned sortie vehicle chips, nuke badges, and combined map/date/mode filtering; matches with a replay expand a **Scores** table for both teams.
+- **[Game replay import](docs/en/replay.md)** — Imports the game's replay folder, any `.wrpl` file, or server replays by session id, links them to the 8111 recording of the same match, and adds a report with every player's team, score, kills and vehicles, the player kill log, and chat. Replays also rebuild tracks for ground, air and naval battles (including enemy units 8111 never shows), so matches without an 8111 recording can be played back, with player names and vehicles on hover.
 - **Bilingual UI** — Switch between English and Simplified Chinese in the top bar (defaults to your Windows display language on first launch).
 
 ---
@@ -100,11 +100,14 @@ The web UI listens on `http://127.0.0.1:5000` by default (configurable via `--ho
 flowchart LR
     WT["War Thunder (localhost:8111)"] --> Capture["Capture Thread"]
     Capture --> SQLite[("Local SQLite + Map PNGs")]
+    Replay["Game replays (.wrpl)"] --> Importer["Replay Importer"]
+    Importer --> SQLite
     SQLite --> Web["Flask Local Server (127.0.0.1:5000)"]
     Web --> Browser["Canvas Viewer & Replay UI"]
 ```
 
 - **Read-only local telemetry**: polls `map_info.json`, `map_obj.json`, `map.img`, `indicators`, and `hudmsg` from War Thunder's official local web-map port.
+- **Read-only replay parsing**: reads `.wrpl` files from the game's replay folder; the network is used only to download a server replay by session id.
 - **No memory reading, no game file changes**: completely passive and local-only; all recordings are stored in `data/matches.db` and `data/maps/`.
 
 ---
@@ -136,6 +139,7 @@ This project is developed with AI coding assistants under human direction, testi
 
 - **Core rebuild (`v0.1`–`v0.4.6`)**: Rebuilt from scratch on top of `ElBartt/WarThunder-Plotter`—**Claude Fable 5.2** handled architecture design, data verification, and review, while **Claude Opus 5.5** wrote most of the core implementation.
 - **UI polish, viewer enhancements & bug fixes (`v0.4.7+`)**: **Google Antigravity (Gemini)** contributed the tactical HUD visual redesign, match history thumbnails/vehicle chips/column headers, focus mode, follow-me camera, adjustable map darkening, compact speed stepper, keyboard shortcuts, sortie timeline, battle feed semantic filtering (including War Thunder Chinese zero-width-space handling), nuke & air-view fixes, player color-flash fix, tests, and documentation updates.
+- **Game replay support (`v0.5+`)**: **Claude Opus 5.5** reverse-engineered the `.wrpl` format and built track rebuilding and replay reports, checked match by match against real 8111 recordings.
 
 ---
 

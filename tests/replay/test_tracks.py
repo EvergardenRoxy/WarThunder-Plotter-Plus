@@ -70,7 +70,7 @@ def test_build_ticks_groups_by_time_with_relation_styles():
     a = tracks.UnitTrack(1, [(1.0, 0.0, 0.0, 0.0), (2.0, 10.0, 0.0, 0.0)], True)
     b = tracks.UnitTrack(2, [(1.0, 5.0, 0.0, 5.0)], True)
     labels = [("Alice", "yak-3"), (None, None)]
-    ticks = positions.build_ticks([a, b], ["player", "enemy"], labels, "yak-3", (-10.0, -10.0, 10.0, 10.0), False)
+    ticks = positions.build_ticks([a, b], ["player", "enemy"], labels, "yak-3", (-10.0, -10.0, 10.0, 10.0), None)
     assert [tick.timestamp for tick, _ in ticks] == [1.0, 2.0]
     first_tick, first_positions = ticks[0]
     assert first_tick == db.TickRecord(1.0, "air", "yak-3", 1, 0)
@@ -82,11 +82,18 @@ def test_build_ticks_ground_battle_mixes_tanks_and_aircraft():
     tank = tracks.UnitTrack(1, [(1.0, 0.0, 0.0, 0.0)], False)
     plane = tracks.UnitTrack(2, [(1.0, 5.0, 0.0, 5.0)], True)
     labels = [("Bob", "us_m4a1"), ("Carol", "p-47d")]
-    (tick, records), = positions.build_ticks([tank, plane], ["ally", "enemy"], labels, "us_m4a1", (-10.0, -10.0, 10.0, 10.0), True)
+    (tick, records), = positions.build_ticks([tank, plane], ["ally", "enemy"], labels, "us_m4a1", (-10.0, -10.0, 10.0, 10.0), positions.GROUND_ICON)
     assert tick == db.TickRecord(1.0, "tank", "us_m4a1", 0, 0)
     assert [(r.obj_type, r.icon, r.unit_name, r.unit_vehicle) for r in records] == [
         ("ground_model", "MediumTank", "Bob", "us_m4a1"), ("aircraft", "Fighter", "Carol", "p-47d"),
     ]
+
+
+def test_build_ticks_naval_battle_draws_ships():
+    ship = tracks.UnitTrack(1, [(1.0, 0.0, 0.0, 0.0)], False)
+    (tick, records), = positions.build_ticks([ship], ["enemy"], [(None, None)], "us_destroyer_fletcher", (-10.0, -10.0, 10.0, 10.0), positions.SHIP_ICON)
+    assert tick.army_type == "tank"
+    assert [(r.obj_type, r.icon) for r in records] == [("ground_model", "Ship")]
 
 
 def test_resample_interpolates_on_grid_and_skips_long_gaps():

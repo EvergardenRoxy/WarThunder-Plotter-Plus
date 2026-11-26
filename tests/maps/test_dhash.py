@@ -10,14 +10,10 @@ from wt_plotter.maps.dhash import compute_dhash, is_map_loaded
 from wt_plotter.maps.table import MAPS
 
 
-# 上游也无法识别这张图，见 PROGRESS.md。
-UPSTREAM_UNRESOLVED = {"air_falklands_map.png"}
 MAP_IMAGES = sorted(PATHS.maps_dir.glob("*.png"))
 
 
-@pytest.mark.parametrize(
-    "path", [path for path in MAP_IMAGES if path.name not in UPSTREAM_UNRESOLVED], ids=lambda path: path.stem
-)
+@pytest.mark.parametrize("path", MAP_IMAGES, ids=lambda path: path.stem)
 def test_bundled_maps_resolve(path, monkeypatch, tmp_path):
     monkeypatch.setattr(
         lookup, "PATHS", replace(lookup.PATHS, missing_hash_log=tmp_path / "missing.log")

@@ -15,8 +15,9 @@ PLAYER_ICON = "Player"
 AIRCRAFT_ICON = "Fighter"
 AIRCRAFT_TYPE = "aircraft"
 AIR_ARMY = "air"
-# 录像里不知道地面载具的类别，统一画成中坦图标。
+# 录像里不知道地面载具和舰船的类别，统一画成中坦、通用舰船图标。
 GROUND_ICON = "MediumTank"
+SHIP_ICON = "Ship"
 GROUND_TYPE = "ground_model"
 GROUND_ARMY = "tank"
 # 不知道地图范围时，按轨迹外接正方形再留出这一比例的边。
@@ -44,16 +45,17 @@ def extent_bounds(tracks: list[UnitTrack]) -> Bounds:
 
 def build_ticks(
     tracks: list[UnitTrack], relations: list[str], labels: list[tuple[str | None, str | None]],
-    author_vehicle: str, bounds: Bounds, ground: bool,
+    author_vehicle: str, bounds: Bounds, surface_icon: str | None,
 ) -> list[tuple[db.TickRecord, list[db.PositionRecord]]]:
     """按帧时间分组；relations、labels 与 tracks 一一对应：相对录像者的关系（player/squad/ally/enemy）
     和 (玩家名, 载具)。
-    ground 表示陆战（帧的兵种记为坦克）；单位用飞机还是坦克图标看各自的轨迹。"""
+    surface_icon 是陆战/海战里地面单位的图标（帧的兵种和 8111 一样记为坦克），空战为 None。"""
     project = projector(bounds)
+    ground = surface_icon is not None
     army = GROUND_ARMY if ground else AIR_ARMY
     frames: dict[float, list[db.PositionRecord]] = defaultdict(list)
     for track, relation, (name, vehicle) in zip(tracks, relations, labels):
-        obj_type, icon = (AIRCRAFT_TYPE, AIRCRAFT_ICON) if track.air else (GROUND_TYPE, GROUND_ICON)
+        obj_type, icon = (AIRCRAFT_TYPE, AIRCRAFT_ICON) if track.air else (GROUND_TYPE, surface_icon)
         unit_icon = PLAYER_ICON if relation == "player" else icon
         for time, x, _, z in track.points:
             u, v = project(x, z)

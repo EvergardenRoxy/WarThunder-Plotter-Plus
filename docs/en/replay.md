@@ -2,7 +2,7 @@
 
 # Game replays
 
-Besides live 8111 capture, the app reads the game's own `.wrpl` replays to fill in what 8111 cannot provide: every player's name, squadron, team, score and kill counts, the player kill log (who destroyed whom with which vehicle), and chat. Replays also yield aircraft tracks (air battles) or ground unit tracks (ground battles), so matches without an 8111 recording get a playback too.
+Besides live 8111 capture, the app reads the game's own `.wrpl` replays to fill in what 8111 cannot provide: every player's name, squadron, team, score and kill counts, the player kill log (who destroyed whom with which vehicle), and chat. Replays also yield aircraft tracks (air battles), ground unit tracks (ground battles) or ship tracks (naval battles), so matches without an 8111 recording get a playback too.
 
 | Source | Location | Coverage |
 | :--- | :--- | :--- |
@@ -31,7 +31,7 @@ The command line works too and parses in full right away (re-importing replaces 
 
 1. The session id was imported before → reuse that match.
 2. Otherwise pick the finished match whose start is within 120 seconds of the replay start and that is not linked to another session (an 8111 recording).
-3. Otherwise create a finished match. Its map comes from the level name (`<level>_tankmap` for ground battles, `<level>_map` or the level name for air battles).
+3. Otherwise create a finished match. Its map comes from the level name (`<level>_tankmap` for ground and naval battles, `<level>_map` or the level name for air battles).
 
 When the replay runs longer than the recording (server replays), the match end time moves to the replay end.
 
@@ -39,8 +39,9 @@ When the replay runs longer than the recording (server replays), the match end t
 
 Replays are turned into unit tracks and stored as the same ticks and positions as an 8111 recording, so the viewer plays them back directly. The replay author is **me**, real squadmates are **squad**, everyone else is ally or enemy by team. The kill log also goes into the battle feed.
 
-- **Air battles** (battle class not `air_ground_*`): one track per aircraft, including the author's own and AI aircraft (type 2).
+- **Air battles** (battle class not `air_ground_*` / `air_naval_*`): one track per aircraft, including the author's own and AI aircraft (type 2).
 - **Ground battles** (`air_ground_*`): tracks for every ground unit (ground sync messages) and for aircraft flown by players (type 2). Units are sampled at different moments, so they are interpolated onto 1-second frames; gaps longer than 15 seconds are left empty. Ground units use the medium tank icon. Units with no owner that never move (less than 30 m in a life) are static map objects and are not drawn. Ground battle playbacks rebuilt from replays also draw aircraft on the ground map (8111 ground recordings do not).
+- **Naval battles** (`air_naval_*`): ships use the same ground sync messages as tanks and are handled like ground battles, drawn with the generic ship icon. 8111 only shows enemy ships you can see; the replay has all of them.
 - Tracks are written only for matches **without 8111 positions**; recorded matches are left alone. Replay-written tracks can be replaced by a server replay (whole battle), never the other way round.
 - A server replay does not know who recorded it, so it reuses the author of the local replay of the same session; with neither, team 1 is treated as allies.
 - Positions carry the player name and vehicle (shown on hover in the viewer): the vehicle reported when that life fired, or the player's only known vehicle (including server lineups) when it never fired; AI units have no name.
@@ -66,7 +67,7 @@ A `.wrpl` holds a header, a settings BLK, a zstd packet stream and a results BLK
 | 740 | Server part number; 742 is `0x5A` for server replays |
 | 748 | Settings BLK size (u16) |
 | 908 | Start time (Unix seconds) |
-| 968 | Battle class, e.g. `air_ground_Dom` (ground) or `base_dom` (air) |
+| 968 | Battle class, e.g. `air_ground_Dom` (ground), `air_naval_Dom` (naval) or `base_dom` (air) |
 | 1234 | Settings BLK, then the zstd packet stream up to the results BLK |
 
 - **BLK**: FAT format with first byte `0x01`: name table, parameter data, parameter table (u32 name id and type, u32 value or offset), block table (name id, parameter count, child count, first child).
